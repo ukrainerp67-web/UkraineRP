@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ukraine-blue: #0057B7;
+  --color-ukraine-yellow: #FFD700;
+  --color-bg-dark: #0A0A0C;
+  --color-card-dark: #141417;
+  --color-secondary-dark: #1C1C21;
+  --color-border-dark: #2A2A2E;
+  --color-text-muted: #80808F;
+  --color-text-dim: #60606F;
+}
+
+:root {
+  background-color: var(--color-bg-dark);
+  color: #E0E0E0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+/* Custom scrollbar for gamey look */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-dark);
+  border-radius: 10px;
+  border: 1px solid var(--color-bg-dark);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ukraine-blue);
+}
+
+/* For mobile devices, we want the scrollbar to be less intrusive but accessible */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Touch feedback for mobile */
+@media (hover: none) {
+  .active-touch:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+}
+
+.game-card {
+  background: var(--color-card-dark);
+  border: 1px solid var(--color-border-dark);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.ukraine-gradient {
+  background: linear-gradient(to right, var(--color-ukraine-blue), var(--color-ukraine-yellow));
+}
+
+.ukraine-border-gradient {
+  background: linear-gradient(to right, var(--color-ukraine-blue), var(--color-ukraine-yellow));
+  padding: 1px;
+  border-radius: 4px;
+}

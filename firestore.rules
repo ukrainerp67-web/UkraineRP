@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128;
+    }
+
+    // --- User Rules ---
+    match /users/{userId} {
+      allow get, list: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if (isOwner(userId) && (
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'firstName', 'lastName', 'sex', 'passportPhoto', 'signature', 
+          'balance', 'socialRating', 'partnerId', 'updatedAt', 'status', 
+          'email', 'uid', 'createdAt', 'birthDate', 'passportSeries', 'passportNumber'
+        ])
+      )) || (
+        // Allow peer-to-peer transfers: Only allowing increments to balance by non-owners
+        isSignedIn() && 
+        incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'updatedAt']) &&
+        incoming().balance > existing().balance
+      );
+
+      function isValidUser(data) {
+        return (data.uid == null || data.uid == request.auth.uid)
+          && (data.firstName == null || data.firstName is string)
+          && (data.lastName == null || data.lastName is string)
+          && (data.balance == null || data.balance is number)
+          && (data.socialRating == null || data.socialRating is number);
+      }
+    }
+
+    // --- Message Rules ---
+    match /messages/{messageId} {
+      allow read, list: if isSignedIn();
+      allow create: if isSignedIn() && (incoming().senderId == request.auth.uid || incoming().senderName is string);
+      allow update: if isSignedIn() && (resource.data.recipientId == request.auth.uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']);
+    }
+
+    // --- Property Rules ---
+    match /properties/{propertyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && (existing().ownerId == request.auth.uid || incoming().ownerId == request.auth.uid);
+    }
+
+    // --- Vehicle Rules ---
+    match /vehicles/{vehicleId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && (existing().ownerId == request.auth.uid || incoming().ownerId == request.auth.uid);
+    }
+
+    // --- Business Rules ---
+    match /businesses/{businessId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && existing().ownerId == request.auth.uid;
+    }
+
+    // --- Mafia Rules ---
+    match /mafias/{mafiaId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+    }
+
+    // --- Typing Status Rules ---
+    match /typingStatus/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+
+    // --- Presence Rules ---
+    match /presence/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+
+    // --- Notification Rules ---
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidNotification(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidNotification(incoming());
+
+      function isValidNotification(data) {
+        return (data.userId == request.auth.uid || data.userId is string)
+          && data.message is string && data.message.size() <= 1000
+          && (data.read is bool)
+          && (data.createdAt == request.time || data.updatedAt == request.time);
+      }
+    }
+
+    // --- Friend Request Rules ---
+    match /friendRequests/{requestId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.fromId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isSignedIn() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid);
+    }
+  }
+}

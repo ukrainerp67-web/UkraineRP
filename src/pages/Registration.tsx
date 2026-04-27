@@ -200,15 +200,36 @@ export const Registration: React.FC = () => {
                 </button>
             </form>
 
-            <div className="mt-8 pt-6 border-t border-border-dark text-center">
-                <p className="text-xs text-text-dim mb-4">
-                    {authMode === 'login' ? 'Ще не маєте акаунту?' : 'Вже маєте акаунт?'}
-                </p>
+            <div className="mt-8 pt-6 border-t border-border-dark">
                 <button
+                    type="button"
                     onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-                    className="text-[10px] text-white font-black uppercase tracking-widest hover:text-ukraine-blue transition-colors"
+                    className="w-full py-4 border border-ukraine-blue/50 text-white font-black uppercase tracking-widest rounded-xl hover:bg-ukraine-blue/10 transition-all mb-4"
                 >
-                    {authMode === 'login' ? 'Зареєструватися' : 'Увійти'}
+                    {authMode === 'login' ? 'Створити акаунт' : 'Перейти до входу'}
+                </button>
+                
+                <p className="text-[10px] text-text-dim uppercase tracking-widest text-center mb-4">або</p>
+                
+                <button
+                    type="button"
+                    onClick={async () => {
+                        setLoading(true);
+                        try {
+                            const { googleProvider, auth } = await import('../firebase');
+                            const { signInWithPopup } = await import('firebase/auth');
+                            const result = await signInWithPopup(auth, googleProvider);
+                            // AuthContext will handle the rest via onAuthStateChanged
+                        } catch (e: any) {
+                            alert(e.message);
+                        } finally {
+                            setLoading(false);
+                        }
+                    }}
+                    className="w-full py-3 bg-white/5 border border-white/10 text-white rounded-xl flex items-center justify-center gap-3 hover:bg-white/10 transition-all text-xs font-bold"
+                >
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                    УВІЙТИ ЧЕРЕЗ GOOGLE
                 </button>
             </div>
             

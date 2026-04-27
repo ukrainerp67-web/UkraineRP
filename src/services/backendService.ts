@@ -284,6 +284,16 @@ class BackendService {
     }
   }
 
+  onAdminUsersUpdate(callback: (users: any[]) => void) {
+    const path = 'users';
+    return onSnapshot(collection(db, path), (snapshot) => {
+      const users = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+      callback(users);
+    }, (error) => {
+      console.warn("Admin users snapshot error", error);
+    });
+  }
+
   async getAdminStats() {
     const path = 'users';
     try {
@@ -313,6 +323,13 @@ class BackendService {
   onPlayersUpdate(callback: (players: any[]) => void) {
     this.playersUpdateCallback = callback;
     this.setupPresence();
+    return () => {
+      this.playersUpdateCallback = null;
+      if (this.presenceUnsubscribe) {
+        this.presenceUnsubscribe();
+        this.presenceUnsubscribe = null;
+      }
+    };
   }
 
   onNewMessage(callback: (msg: any) => void) {

@@ -148,6 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             const profileData = await backend.getProfile(firebaseUser.uid, firebaseUser);
             if (profileData) setProfile(profileData as UserProfile);
+            else setProfile(null);
           }
         }, (error) => {
           console.error("Profile sync error:", error);

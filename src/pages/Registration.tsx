@@ -8,9 +8,17 @@ import { backend } from '../services/backendService';
 import { compressImage } from '../lib/imageUtils';
 
 export const Registration: React.FC = () => {
-  const { user, login: contextLogin, register: contextRegister, logout, refreshProfile } = useAuth();
+  const { user, profile, login: contextLogin, register: contextRegister, logout, refreshProfile } = useAuth();
   const [step, setStep] = useState(1);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  useEffect(() => {
+    if (user && !profile) {
+      setStep(2);
+    } else if (!user) {
+      setStep(1);
+    }
+  }, [user, profile]);
 
   const [authForm, setAuthForm] = useState({
     email: '',

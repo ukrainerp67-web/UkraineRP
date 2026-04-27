@@ -18,23 +18,39 @@ export const AdminView: React.FC = () => {
   const [moneyAction, setMoneyAction] = useState({ amount: '', reason: '' });
 
   useEffect(() => {
-    fetchData();
+    setLoading(true);
+    const unsubscribe = backend.onAdminUsersUpdate((usersData) => {
+      setUsers(usersData);
+      
+      // Calculate stats locally
+      const totalPlayers = usersData.length;
+      const totalEconomy = usersData.reduce((acc, u) => acc + (Number(u.balance) || 0), 0);
+      const avgSocialRating = usersData.length > 0 
+        ? usersData.reduce((acc, u) => acc + (Number(u.socialRating) || 0), 0) / usersData.length 
+        : 0;
+
+      // Online check (users with activity in last 5 mins)
+      const fiveMinsAgo = Date.now() - 5 * 60 * 1000;
+      const onlineNow = usersData.filter(u => {
+        if (!u.lastActive) return false;
+        const time = u.lastActive.toMillis ? u.lastActive.toMillis() : new Date(u.lastActive).getTime();
+        return time > fiveMinsAgo;
+      }).length;
+
+      setStats({
+        totalPlayers,
+        totalEconomy,
+        onlineNow,
+        avgSocialRating
+      });
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [usersData, statsData] = await Promise.all([
-        backend.getAdminUsers(),
-        backend.getAdminStats()
-      ]);
-      setUsers(usersData);
-      setStats(statsData);
-    } catch (error) {
-      console.error('Error fetching admin data:', error);
-    } finally {
-      setLoading(false);
-    }
+  const fetchData = () => {
+    // No longer needed as it's real-time, but keep it empty if called elsewhere
   };
 
   const handleUpdateUser = async (e: React.FormEvent) => {

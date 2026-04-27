@@ -131,7 +131,14 @@ export const Registration: React.FC = () => {
       // AuthContext real-time listener will pick up the change
     } catch (error: any) {
       console.error('Error saving profile:', error);
-      alert('Помилка збереження профілю');
+      let errorMsg = 'Помилка збереження профілю';
+      try {
+        const firestoreErr = JSON.parse(error.message);
+        errorMsg += `: ${firestoreErr.error}`;
+      } catch (e) {
+        errorMsg += `: ${error.message}`;
+      }
+      alert(errorMsg);
       setLoading(false);
     }
   };
@@ -221,15 +228,17 @@ export const Registration: React.FC = () => {
                 
                 <button
                     type="button"
-                    onClick={async () => {
+                  onClick={async () => {
                         setLoading(true);
                         try {
                             const { googleProvider, auth } = await import('../firebase');
+                            googleProvider.setCustomParameters({ prompt: 'select_account' });
                             const { signInWithPopup } = await import('firebase/auth');
-                            const result = await signInWithPopup(auth, googleProvider);
+                            await signInWithPopup(auth, googleProvider);
                             // AuthContext will handle the rest via onAuthStateChanged
                         } catch (e: any) {
-                            alert(e.message);
+                            console.error("Google Auth Error:", e);
+                            alert(`Помилка: ${e.message}`);
                         } finally {
                             setLoading(false);
                         }

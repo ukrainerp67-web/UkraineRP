@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { backend } from '../services/backendService';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 interface UserProfile {
   uid: string;
@@ -111,7 +112,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    let profileUnsubscribe: (() => void) | null = null;
+    let playersUnsubscribe: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Cleanup previous subscriptions
+      if (profileUnsubscribe) profileUnsubscribe();
+      if (playersUnsubscribe) playersUnsubscribe();
+
       if (firebaseUser) {
         const authUser: AuthUser = {
           uid: firebaseUser.uid,
@@ -120,63 +128,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(authUser);
         localStorage.setItem("user", JSON.stringify(authUser));
 
-        try {
-          // Clear legacy short IDs from localStorage if they exist
-          if (authUser.uid.length < 10 && !authUser.uid.includes('-')) {
-             console.warn("Legacy UID detected, forcing logout");
-             await backend.logout();
-             return;
-          }
-
-          let profileData = await backend.getProfile(firebaseUser.uid, firebaseUser);
-          
-          // Promote yourself to admin automatically for testing
-          const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
-          if (isAdminEmail) {
-              if (!profileData || profileData.role !== 'admin') {
-                 // Ensure profile object exists and has admin role
-                 profileData = {
-                   ...(profileData || {}),
-                   uid: firebaseUser.uid,
-                   email: firebaseUser.email || '',
-                   role: 'admin',
-                   firstName: (profileData as any)?.firstName || 'Admin',
-                   lastName: (profileData as any)?.lastName || 'RP',
-                   balance: (profileData as any)?.balance || 1000000,
-                   socialRating: (profileData as any)?.socialRating || 999,
-                   status: 'Головний Адмін'
-                 };
-                 await backend.saveProfile(profileData);
-              }
-          }
-
-          setProfile(profileData as UserProfile);
-
-          if (profileData) {
+        // 1. Profile real-time listener
+        profileUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
+          if (snapshot.exists()) {
+            let profileData = snapshot.data() as UserProfile;
+            const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
+            if (isAdminEmail && profileData.role !== 'admin') {
+                profileData = { ...profileData, role: 'admin', status: 'Головний Адмін' };
+                await backend.saveProfile(profileData);
+            }
+            setProfile(profileData);
+            
+            // Re-join game with presence
             backend.joinGame({
               uid: firebaseUser.uid,
-              name: `${(profileData as any).firstName} ${(profileData as any).lastName}`,
+              name: `${profileData.firstName} ${profileData.lastName}`,
               status: 'online'
             });
+          } else {
+            const profileData = await backend.getProfile(firebaseUser.uid, firebaseUser);
+            if (profileData) setProfile(profileData as UserProfile);
           }
-          
-          backend.onPlayersUpdate((players) => {
-            setOnlinePlayers(players);
-          });
+        }, (error) => {
+          console.error("Profile sync error:", error);
+        });
 
-        } catch (e) {
-          console.error("Profile fetch error:", e);
-        }
+        // 2. Global players listener
+        playersUnsubscribe = backend.onPlayersUpdate((players) => {
+          setOnlinePlayers(players);
+        });
+
       } else {
         setUser(null);
         setProfile(null);
+        setOnlinePlayers([]);
         localStorage.removeItem("user");
         localStorage.removeItem("token");
       }
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (profileUnsubscribe) profileUnsubscribe();
+      if (playersUnsubscribe) playersUnsubscribe();
+    };
   }, []);
 
   return (

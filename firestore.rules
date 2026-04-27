@@ -29,8 +29,12 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'ukrainerp67@gmail.com' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'
       );
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.email == 'ukrainerp67@gmail.com';
     }
 
     // --- User Rules ---
@@ -38,23 +42,30 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if isSignedIn(); // Admin might need to list all users
       allow create: if isOwner(userId) && isValidUser(incoming());
-      // Admin bypass for everything on users
-      allow write: if isAdmin();
       
-      allow update: if isOwner(userId) && (
-        incoming().diff(existing()).affectedKeys().hasOnly([
-          'firstName', 'lastName', 'sex', 'passportPhoto', 'signature', 
-          'balance', 'socialRating', 'partnerId', 'updatedAt', 'status', 
-          'email', 'uid', 'role', 'createdAt', 'birthDate', 'passportSeries', 'passportNumber',
-          'businesses', 'jobs', 'notifications', 'achievements', 'inventory', 'lastActive',
-          'muteUntil', 'muteReason'
-        ])
-      ) || (
-        // Allow peer-to-peer transfers: Only allowing increments to balance by non-owners
-        isSignedIn() && 
-        incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'updatedAt']) &&
-        incoming().balance > existing().balance
+      allow update: if (isOwner(userId) || isAdmin()) && (
+        (
+          // General updates: No role change
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'firstName', 'lastName', 'sex', 'passportPhoto', 'signature', 
+            'balance', 'socialRating', 'partnerId', 'updatedAt', 'status', 
+            'email', 'uid', 'birthDate', 'passportSeries', 'passportNumber',
+            'businesses', 'jobs', 'notifications', 'achievements', 'inventory', 'lastActive',
+            'muteUntil', 'muteReason'
+          ])
+        ) || (
+          // Role updates: ONLY SUPER ADMIN
+          isSuperAdmin() && 
+          incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt'])
+        ) || (
+          // Peer-to-peer transfers
+          isSignedIn() && 
+          incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'updatedAt']) &&
+          incoming().balance > existing().balance
+        )
       );
+
+      allow delete: if isSuperAdmin();
 
       function isValidUser(data) {
         return (data.uid == null || data.uid == request.auth.uid || isAdmin())

@@ -49,13 +49,33 @@ export const AdminView: React.FC = () => {
       return;
     }
 
+    const isSuperAdmin = adminProfile.email === 'ukrainerp67@gmail.com';
+    const originalUser = users.find(u => u.uid === selectedUser.uid);
+    const roleChanged = selectedUser.role !== originalUser?.role;
+
     try {
       const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
-      await backend.adminUpdateUser(selectedUser.uid, {
+      
+      const updateData: any = {
         balance: balance,
         socialRating: socialRating,
-        role: selectedUser.role
-      }, adminName);
+      };
+
+      // Only allow super admin to change roles
+      if (isSuperAdmin && roleChanged) {
+        updateData.role = selectedUser.role;
+      }
+
+      await backend.adminUpdateUser(selectedUser.uid, updateData, adminName);
+
+      if (isSuperAdmin && roleChanged) {
+        await backend.sendNotification(selectedUser.uid, {
+          title: 'Оновлення статусу',
+          message: `Адміністратор ${adminName} змінив вашу роль на: ${selectedUser.role === 'admin' ? 'Адміністратор' : 'Гравець'}`,
+          type: 'social'
+        });
+      }
+
       alert('Дані оновлено!');
       setIsEditing(false);
       fetchData();
@@ -343,17 +363,19 @@ export const AdminView: React.FC = () => {
                   className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
                 />
               </div>
-              <div>
-                <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Роль</label>
-                <select 
-                  value={selectedUser.role || 'user'}
-                  onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value})}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
-                >
-                  <option value="user">Гравець</option>
-                  <option value="admin">Адміністратор</option>
-                </select>
-              </div>
+              {adminProfile.email === 'ukrainerp67@gmail.com' && (
+                <div>
+                  <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Роль</label>
+                  <select 
+                    value={selectedUser.role || 'user'}
+                    onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
+                  >
+                    <option value="user">Гравець</option>
+                    <option value="admin">Адміністратор</option>
+                  </select>
+                </div>
+              )}
 
               <div className="pt-4 flex gap-3">
                 <button 

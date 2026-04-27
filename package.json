@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "start": "node server.ts"
+    "start": "node app.js"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",

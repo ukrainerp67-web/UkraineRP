@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { backend } from '../services/backendService';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../firebase';
 
 interface UserProfile {
   uid: string;
@@ -13,6 +15,7 @@ interface UserProfile {
   balance: number;
   socialRating: number;
   status: string;
+  role?: string;
   partnerId?: string;
   createdAt: any;
   updatedAt: any;
@@ -96,52 +99,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return data;
   };
 
-  const logout = () => {
-    handleSetUser(null);
-    setProfile(null);
-    backend.disconnect();
+  const logout = async () => {
+    try {
+      await backend.logout();
+      setUser(null);
+      setProfile(null);
+      backend.disconnect();
+    } catch (e) {
+      console.error("Logout error:", e);
+    }
   };
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = backend.getToken();
-      if (token) {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const authUser: AuthUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || '',
+        };
+        setUser(authUser);
+        localStorage.setItem("user", JSON.stringify(authUser));
+
         try {
-          const storedUser = localStorage.getItem("user");
-          if (storedUser) {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-            
-            let profileData = await backend.getProfile(parsedUser.uid);
-            
-            // Promote yourself to admin automatically for testing
-            const isAdminEmail = parsedUser.email === 'ukrainerp67@gmail.com'; 
-            if (profileData && isAdminEmail && profileData.role !== 'admin') {
-                profileData.role = 'admin';
-                await backend.saveProfile(profileData);
-            }
+          // Clear legacy short IDs from localStorage if they exist
+          if (authUser.uid.length < 10 && !authUser.uid.includes('-')) {
+             console.warn("Legacy UID detected, forcing logout");
+             await backend.logout();
+             return;
+          }
 
-            setProfile(profileData);
+          let profileData = await backend.getProfile(firebaseUser.uid, firebaseUser);
+          
+          // Promote yourself to admin automatically for testing
+          const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
+          if (isAdminEmail) {
+              if (!profileData || profileData.role !== 'admin') {
+                 // Ensure profile object exists and has admin role
+                 profileData = {
+                   ...(profileData || {}),
+                   uid: firebaseUser.uid,
+                   email: firebaseUser.email || '',
+                   role: 'admin',
+                   firstName: (profileData as any)?.firstName || 'Admin',
+                   lastName: (profileData as any)?.lastName || 'RP',
+                   balance: (profileData as any)?.balance || 1000000,
+                   socialRating: (profileData as any)?.socialRating || 999,
+                   status: 'Головний Адмін'
+                 };
+                 await backend.saveProfile(profileData);
+              }
+          }
 
-            if (profileData) {
-              backend.joinGame({
-                uid: parsedUser.uid,
-                name: `${profileData.firstName} ${profileData.lastName}`,
-                status: 'online'
-              });
-            }
-            backend.onPlayersUpdate((players) => {
-              setOnlinePlayers(players);
+          setProfile(profileData as UserProfile);
+
+          if (profileData) {
+            backend.joinGame({
+              uid: firebaseUser.uid,
+              name: `${(profileData as any).firstName} ${(profileData as any).lastName}`,
+              status: 'online'
             });
           }
+          
+          backend.onPlayersUpdate((players) => {
+            setOnlinePlayers(players);
+          });
+
         } catch (e) {
-          console.error("Auth check error:", e);
+          console.error("Profile fetch error:", e);
         }
+      } else {
+        setUser(null);
+        setProfile(null);
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
       }
       setLoading(false);
-    };
+    });
 
-    checkAuth();
+    return () => unsubscribe();
   }, []);
 
   return (

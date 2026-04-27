@@ -26,11 +26,18 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128;
     }
 
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'ukrainerp67@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
     // --- User Rules ---
     match /users/{userId} {
       allow get, list: if isSignedIn();
       allow create: if isOwner(userId) && isValidUser(incoming());
-      allow update: if (isOwner(userId) && (
+      allow update: if isAdmin() || (isOwner(userId) && (
         incoming().diff(existing()).affectedKeys().hasOnly([
           'firstName', 'lastName', 'sex', 'passportPhoto', 'signature', 
           'balance', 'socialRating', 'partnerId', 'updatedAt', 'status', 

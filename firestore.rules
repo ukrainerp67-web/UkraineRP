@@ -36,15 +36,18 @@ service cloud.firestore {
     // --- User Rules ---
     match /users/{userId} {
       allow get, list: if isSignedIn();
-      allow create: if isAdmin() || (isOwner(userId) && isValidUser(incoming()));
-      allow update: if isAdmin() || (isOwner(userId) && (
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      // Admin bypass for write
+      allow write: if isAdmin();
+      
+      allow update: if isOwner(userId) && (
         incoming().diff(existing()).affectedKeys().hasOnly([
           'firstName', 'lastName', 'sex', 'passportPhoto', 'signature', 
           'balance', 'socialRating', 'partnerId', 'updatedAt', 'status', 
           'email', 'uid', 'role', 'createdAt', 'birthDate', 'passportSeries', 'passportNumber',
           'businesses', 'jobs', 'notifications', 'achievements', 'inventory', 'lastActive'
         ])
-      )) || (
+      ) || (
         // Allow peer-to-peer transfers: Only allowing increments to balance by non-owners
         isSignedIn() && 
         incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'updatedAt']) &&
@@ -57,6 +60,7 @@ service cloud.firestore {
           && (data.lastName == null || data.lastName is string)
           && (data.balance == null || data.balance is number)
           && (data.socialRating == null || data.socialRating is number)
+          && (data.status == null || data.status is string)
           && (data.role == null || data.role is string);
       }
     }

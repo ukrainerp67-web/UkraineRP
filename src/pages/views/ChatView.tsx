@@ -151,13 +151,13 @@ export const ChatView: React.FC = () => {
         ref={scrollRef}
         className="flex-1 overflow-y-auto pr-1 md:pr-2 space-y-3 md:space-y-4 custom-scrollbar scroll-smooth"
       >
-        {filteredMessages.map((msg) => {
+        {filteredMessages.map((msg, idx) => {
           const isOwn = msg.senderId === profile?.uid;
           const isPrivate = !!msg.recipientId;
 
           return (
             <motion.div 
-              key={msg.id}
+              key={msg.id || `msg-${idx}-${msg.timestamp}`}
               layout
               initial={{ opacity: 0, scale: 0.8, x: isOwn ? 20 : -20 }}
               animate={{ opacity: 1, scale: 1, x: 0 }}

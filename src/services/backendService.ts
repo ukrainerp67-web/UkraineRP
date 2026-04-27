@@ -57,7 +57,7 @@ class BackendService {
 
         // Listen for players
         this.presenceUnsubscribe = onSnapshot(collection(db, 'presence'), (snapshot) => {
-          const players = snapshot.docs.map(doc => doc.data());
+      const players = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           if (this.playersUpdateCallback) {
             this.playersUpdateCallback(players);
           }
@@ -151,8 +151,8 @@ class BackendService {
       // Simple search mock
       const q = query(collection(db, path));
       const querySnapshot = await getDocs(q);
-      const users = querySnapshot.docs.map(doc => doc.data());
-      return users.filter(u => 
+      const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      return users.filter((u: any) => 
         u.firstName?.toLowerCase().includes(queryStr.toLowerCase()) || 
         u.lastName?.toLowerCase().includes(queryStr.toLowerCase())
       );
@@ -167,7 +167,7 @@ class BackendService {
     try {
       const q = query(collection(db, path));
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => doc.data());
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -205,7 +205,7 @@ class BackendService {
     const path = 'users';
     try {
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => doc.data());
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -267,7 +267,7 @@ class BackendService {
             this.messagesUnsubscribe = onSnapshot(q, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                     if (change.type === "added") {
-                        callback(change.doc.data());
+                        callback({ id: change.doc.id, ...change.doc.data() });
                     }
                 });
             }, (error) => {

@@ -40,45 +40,10 @@ service cloud.firestore {
 
     // --- User Rules ---
     match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isOwner(userId) && isValidUser(incoming());
-      
-      allow update: if (isOwner(userId) || isAdmin()) && (
-        (
-          // General updates
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'firstName', 'lastName', 'sex', 'passportPhoto', 'signature', 
-            'balance', 'socialRating', 'partnerId', 'updatedAt', 'status', 
-            'email', 'uid', 'birthDate', 'passportSeries', 'passportNumber',
-            'businesses', 'jobs', 'notifications', 'achievements', 'inventory', 'lastActive',
-            'muteUntil', 'muteReason', 'createdAt', 'role'
-          ]) && (incoming().role == existing().get('role', 'user') || isSuperAdmin())
-        ) || (
-          // Role updates: ONLY SUPER ADMIN
-          isSuperAdmin() && 
-          incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt'])
-        ) || (
-          // Peer-to-peer transfers
-          isSignedIn() && 
-          incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'updatedAt']) &&
-          incoming().balance > existing().balance
-        )
-      );
-
+      allow get, list: if isSignedIn();
+      allow create: if isOwner(userId) || isSuperAdmin();
+      allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin() && (isSuperAdmin() || existing().get('role', 'user') != 'admin');
-
-      function isValidUser(data) {
-        return (data.uid == null || data.uid == request.auth.uid || isAdmin())
-          && (data.firstName == null || data.firstName is string)
-          && (data.lastName == null || data.lastName is string)
-          && (data.balance == null || data.balance is number)
-          && (data.socialRating == null || data.socialRating is number)
-          && (data.status == null || data.status is string)
-          && (data.role == null || data.role is string)
-          && (data.muteUntil == null || data.muteUntil is string)
-          && (data.muteReason == null || data.muteReason is string);
-      }
     }
 
     // --- Message Rules ---

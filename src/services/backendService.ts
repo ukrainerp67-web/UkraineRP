@@ -116,11 +116,20 @@ class BackendService {
   async saveProfile(profile: any) {
     const path = `users/${profile.uid}`;
     try {
-      await setDoc(doc(db, path), {
+      const { serverTimestamp } = await import('firebase/firestore');
+      
+      const updateData: any = {
         ...profile,
         updatedAt: serverTimestamp(),
-        createdAt: profile.createdAt || serverTimestamp()
-      }, { merge: true });
+        lastActive: serverTimestamp()
+      };
+
+      // Set createdAt ONLY if not present
+      if (!profile.createdAt) {
+          updateData.createdAt = serverTimestamp();
+      }
+
+      await setDoc(doc(db, 'users', profile.uid), updateData, { merge: true });
       return { success: true };
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);

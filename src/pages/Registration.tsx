@@ -116,15 +116,14 @@ export const Registration: React.FC = () => {
         email: user.email,
         firstName: formData.firstName.trim().toUpperCase(),
         lastName: formData.lastName.trim().toUpperCase(),
-        sex: formData.sex,
+        sex: formData.sex === 'M' ? 'Чоловіча' : 'Жіноча',
         passportPhoto: formData.passportPhoto,
         signature: formData.signature,
         birthDate: new Date().toLocaleDateString('uk-UA'),
         balance: 5000,
         socialRating: 0,
         status: 'Громадянин',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        role: 'user'
       };
       
       await backend.saveProfile(profileData);
@@ -266,14 +265,12 @@ export const Registration: React.FC = () => {
                   <UserPlus className="w-5 h-5 text-ukraine-blue" />
                   Створення Персонажу
                 </h2>
-                <div className="flex gap-4">
-                  <button 
-                    onClick={() => logout()}
-                    className="text-[10px] font-bold text-text-muted hover:text-white transition-colors"
-                  >
-                    ВИЙТИ
-                  </button>
-                </div>
+                <button 
+                  onClick={() => logout()}
+                  className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-[10px] font-black tracking-widest transition-all"
+                >
+                  ВИЙТИ
+                </button>
               </div>
               
               <div className="space-y-6">

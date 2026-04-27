@@ -70,8 +70,10 @@ export const AdminView: React.FC = () => {
 
       if (isSuperAdmin && roleChanged) {
         await backend.sendNotification(selectedUser.uid, {
-          title: 'Оновлення статусу',
-          message: `Адміністратор ${adminName} змінив вашу роль на: ${selectedUser.role === 'admin' ? 'Адміністратор' : 'Гравець'}`,
+          title: selectedUser.role === 'admin' ? 'Призначення на пост' : 'Звільнення з посту',
+          message: selectedUser.role === 'admin' 
+            ? 'Вітаємо в нашій команді! 🥳 Вас назначено адміністратором. Тепер ви один з нас!'
+            : 'На жаль... ви покинули пост адміністратора, дякуємо за ваш вклад!',
           type: 'social'
         });
       }

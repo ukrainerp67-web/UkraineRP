@@ -128,8 +128,8 @@ export const Registration: React.FC = () => {
       };
       
       await backend.saveProfile(profileData);
-      await refreshProfile(); // Refresh context
-    } catch (error) {
+      // AuthContext real-time listener will pick up the change
+    } catch (error: any) {
       console.error('Error saving profile:', error);
       alert('Помилка збереження профілю');
       setLoading(false);
@@ -381,7 +381,7 @@ export const Registration: React.FC = () => {
             <div className="flex flex-col items-center gap-8">
               <div className="w-full">
                 <Passport 
-                  uid="UA-NEW"
+                  uid={user?.uid ? user.uid.slice(0, 8) : "NEW"}
                   firstName={formData.firstName}
                   lastName={formData.lastName}
                   sex={formData.sex}

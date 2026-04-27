@@ -29,7 +29,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'ukrainerp67@gmail.com' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
       );
     }
 
@@ -40,19 +40,19 @@ service cloud.firestore {
     // --- User Rules ---
     match /users/{userId} {
       allow get: if isSignedIn();
-      allow list: if isSignedIn(); // Admin might need to list all users
+      allow list: if isSignedIn();
       allow create: if isOwner(userId) && isValidUser(incoming());
       
       allow update: if (isOwner(userId) || isAdmin()) && (
         (
-          // General updates: No role change
+          // General updates
           incoming().diff(existing()).affectedKeys().hasOnly([
             'firstName', 'lastName', 'sex', 'passportPhoto', 'signature', 
             'balance', 'socialRating', 'partnerId', 'updatedAt', 'status', 
             'email', 'uid', 'birthDate', 'passportSeries', 'passportNumber',
             'businesses', 'jobs', 'notifications', 'achievements', 'inventory', 'lastActive',
-            'muteUntil', 'muteReason'
-          ])
+            'muteUntil', 'muteReason', 'createdAt', 'role'
+          ]) && (incoming().role == existing().get('role', 'user') || isSuperAdmin())
         ) || (
           // Role updates: ONLY SUPER ADMIN
           isSuperAdmin() && 
@@ -65,7 +65,7 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if isSuperAdmin();
+      allow delete: if isAdmin() && (isSuperAdmin() || existing().get('role', 'user') != 'admin');
 
       function isValidUser(data) {
         return (data.uid == null || data.uid == request.auth.uid || isAdmin())

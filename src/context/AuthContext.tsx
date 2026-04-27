@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { backend } from '../services/backendService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 interface UserProfile {
   uid: string;
@@ -134,8 +134,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             let profileData = snapshot.data() as UserProfile;
             const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
             if (isAdminEmail && profileData.role !== 'admin') {
-                profileData = { ...profileData, role: 'admin', status: 'Головний Адмін' };
-                await backend.saveProfile(profileData);
+                try {
+                  await updateDoc(doc(db, 'users', firebaseUser.uid), {
+                    role: 'admin',
+                    status: 'Головний Адмін',
+                    updatedAt: serverTimestamp()
+                  });
+                } catch (error) {
+                  console.warn("Auto-admin promotion delayed", error);
+                }
             }
             setProfile(profileData);
             

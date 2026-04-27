@@ -39,9 +39,17 @@ export const ChatView: React.FC = () => {
     }
   };
 
+  const isMuted = profile?.muteUntil ? new Date(profile.muteUntil) > new Date() : false;
+  const muteTimeLeft = isMuted ? Math.ceil((new Date(profile.muteUntil).getTime() - new Date().getTime()) / (1000 * 60)) : 0;
+
   const sendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !profile) return;
+
+    if (isMuted) {
+      alert(`Ваш чат заблоковано ще на ${muteTimeLeft} хв. Причина: ${profile.muteReason || 'Не вказана'}`);
+      return;
+    }
 
     const messageData: any = {
       senderId: profile.uid,
@@ -223,18 +231,19 @@ export const ChatView: React.FC = () => {
 
       <form 
         onSubmit={sendMessage} 
-        className="mt-3 md:mt-4 p-1.5 bg-secondary-dark rounded-xl md:rounded-2xl border border-border-dark flex items-center gap-2 shadow-xl flex-shrink-0"
+        className={`mt-3 md:mt-4 p-1.5 bg-secondary-dark rounded-xl md:rounded-2xl border border-border-dark flex items-center gap-2 shadow-xl flex-shrink-0 ${isMuted ? 'opacity-60 grayscale cursor-not-allowed' : ''}`}
       >
         <input
+          disabled={isMuted}
           type="text"
-          value={newMessage}
+          value={isMuted ? `ЧАТ ЗАБЛОКОВАНО (${muteTimeLeft} ХВ)` : newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Твоє повідомлення..."
+          placeholder={isMuted ? "" : "Твоє повідомлення..."}
           className="flex-1 bg-transparent border-none outline-none px-3 py-2 text-[11px] md:text-sm text-white placeholder:text-text-dim"
         />
         <button 
           type="submit" 
-          disabled={!newMessage.trim()}
+          disabled={!newMessage.trim() || isMuted}
           className="bg-ukraine-blue text-white p-2 md:p-3 rounded-lg md:rounded-xl hover:bg-opacity-80 transition-all active:scale-90 disabled:grayscale disabled:opacity-30 flex-shrink-0"
         >
           <Send className="w-3.5 h-3.5 md:w-4 md:h-4" />

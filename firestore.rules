@@ -121,9 +121,11 @@ service cloud.firestore {
 
       function isValidNotification(data) {
         return (data.userId == request.auth.uid || data.userId is string)
-          && data.message is string && data.message.size() <= 1000
+          && (data.title == null || data.title is string)
+          && (data.message is string && data.message.size() <= 1000)
+          && (data.type == null || data.type is string)
           && (data.read is bool)
-          && (data.createdAt == request.time || data.updatedAt == request.time);
+          && (data.createdAt == request.time || data.createdAt == null || data.updatedAt == request.time);
       }
     }
 

@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Users, Shield, TrendingUp, DollarSign, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare } from 'lucide-react';
+import { Users, Shield, TrendingUp, DollarSign, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare, AlertTriangle, Clock } from 'lucide-react';
 import { backend } from '../../services/backendService';
+import { useAuth } from '../../context/AuthContext';
 
 export const AdminView: React.FC = () => {
+  const { profile: adminProfile } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isMuting, setIsMuting] = useState(false);
+  const [muteDuration, setMuteDuration] = useState('15');
+  const [muteReason, setMuteReason] = useState('Порушення правил чату');
+  const [moneyAction, setMoneyAction] = useState({ amount: '', reason: '' });
 
   useEffect(() => {
     fetchData();
@@ -33,19 +39,78 @@ export const AdminView: React.FC = () => {
 
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser) return;
+    if (!selectedUser || !adminProfile) return;
 
     try {
       await backend.adminUpdateUser(selectedUser.uid, {
         balance: Number(selectedUser.balance),
         socialRating: Number(selectedUser.socialRating),
         role: selectedUser.role
-      });
+      }, `${adminProfile.firstName} ${adminProfile.lastName}`);
       alert('Дані оновлено!');
       setIsEditing(false);
       fetchData();
     } catch (error) {
       alert('Помилка оновлення');
+    }
+  };
+
+  const handleMute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser || !adminProfile) return;
+
+    try {
+      await backend.adminMuteUser(
+        selectedUser.uid, 
+        Number(muteDuration), 
+        muteReason, 
+        `${adminProfile.firstName} ${adminProfile.lastName}`
+      );
+      alert(`Мут видано на ${muteDuration} хв!`);
+      setIsMuting(false);
+      fetchData();
+    } catch (error) {
+      alert('Помилка видачі муту');
+    }
+  };
+
+  const handleDelete = async (uid: string) => {
+    if (!window.confirm('ВИ ВПЕВНЕНІ? Це видалить акаунт гравця назавжди!')) return;
+
+    try {
+      await backend.adminDeleteUser(uid);
+      alert('Акаунт видалено');
+      fetchData();
+    } catch (error) {
+      alert('Помилка видалення');
+    }
+  };
+
+  const handleAdjustMoney = async (type: 'add' | 'remove') => {
+    if (!selectedUser || !adminProfile || !moneyAction.amount) return;
+    
+    const amount = Number(moneyAction.amount);
+    const newBalance = type === 'add' 
+      ? selectedUser.balance + amount 
+      : Math.max(0, selectedUser.balance - amount);
+
+    try {
+      await backend.adminUpdateUser(selectedUser.uid, {
+        balance: newBalance
+      }, `${adminProfile.firstName} ${adminProfile.lastName}`);
+      
+      await backend.sendNotification(selectedUser.uid, {
+        title: type === 'add' ? 'Нарахування коштів' : 'Зняття коштів',
+        message: `Адміністратор ${adminProfile.firstName} ${type === 'add' ? 'видав вам' : 'зняв з вашого рахунку'} ₴${amount.toLocaleString()}. Причина: ${moneyAction.reason || 'Не вказана'}`,
+        type: type === 'add' ? 'success' : 'error'
+      });
+
+      alert('Баланс оновлено');
+      setMoneyAction({ amount: '', reason: '' });
+      setIsEditing(false);
+      fetchData();
+    } catch (error) {
+      alert('Помилка оновлення балансу');
     }
   };
 
@@ -156,12 +221,29 @@ export const AdminView: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => { setSelectedUser(user); setIsEditing(true); }}
-                      className="p-2 hover:bg-white/10 rounded-lg text-text-dim hover:text-white transition-colors"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                       <button 
+                        onClick={() => { setSelectedUser(user); setIsMuting(true); }}
+                        className="p-2 hover:bg-red-500/10 rounded-lg text-text-dim hover:text-red-400 transition-colors"
+                        title="Мут"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => { setSelectedUser(user); setIsEditing(true); }}
+                        className="p-2 hover:bg-white/10 rounded-lg text-text-dim hover:text-white transition-colors"
+                        title="Редагувати"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(user.uid)}
+                        className="p-2 hover:bg-red-500/20 rounded-lg text-text-dim hover:text-red-500 transition-colors"
+                        title="Видалити"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -184,8 +266,42 @@ export const AdminView: React.FC = () => {
             </div>
 
             <form onSubmit={handleUpdateUser} className="space-y-4">
+              <div className="bg-white/5 p-4 rounded-2xl border border-white/5 space-y-3">
+                 <p className="text-[10px] font-black uppercase text-ukraine-blue mb-2">Швидкі фінанси</p>
+                 <div className="flex gap-2">
+                    <input 
+                      type="number"
+                      placeholder="Сума"
+                      value={moneyAction.amount}
+                      onChange={(e) => setMoneyAction({...moneyAction, amount: e.target.value})}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs"
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => handleAdjustMoney('add')}
+                      className="px-4 bg-green-600/20 text-green-400 border border-green-600/30 rounded-xl text-[10px] font-black"
+                    >
+                      +
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => handleAdjustMoney('remove')}
+                      className="px-4 bg-red-600/20 text-red-400 border border-red-600/30 rounded-xl text-[10px] font-black"
+                    >
+                      -
+                    </button>
+                 </div>
+                 <input 
+                    type="text"
+                    placeholder="Причина операції..."
+                    value={moneyAction.reason}
+                    onChange={(e) => setMoneyAction({...moneyAction, reason: e.target.value})}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs"
+                 />
+              </div>
+
               <div>
-                <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Баланс (₴)</label>
+                <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Точний Баланс (₴)</label>
                 <input 
                   type="number"
                   value={selectedUser.balance}
@@ -227,6 +343,72 @@ export const AdminView: React.FC = () => {
                   className="flex-1 py-3 rounded-xl font-black uppercase tracking-tighter text-xs bg-ukraine-blue text-white shadow-lg shadow-ukraine-blue/20 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   Зберегти
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+      {/* Mute Modal */}
+      {isMuting && selectedUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card-dark border border-white/10 rounded-3xl w-full max-w-md p-6 shadow-2xl"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-red-500">
+                    <MessageSquare className="w-5 h-5" />
+                 </div>
+                 <div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tighter">Видати Мут</h3>
+                    <p className="text-[10px] text-text-dim font-bold uppercase tracking-widest">{selectedUser.firstName} {selectedUser.lastName}</p>
+                 </div>
+              </div>
+              <button onClick={() => setIsMuting(false)} className="text-text-dim hover:text-white">✕</button>
+            </div>
+
+            <form onSubmit={handleMute} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Тривалість (хвилини)</label>
+                <select 
+                  value={muteDuration}
+                  onChange={(e) => setMuteDuration(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
+                >
+                  <option value="5">5 хвилин</option>
+                  <option value="15">15 хвилин</option>
+                  <option value="30">30 хвилин</option>
+                  <option value="60">1 година</option>
+                  <option value="120">2 години</option>
+                  <option value="1440">1 доба</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Причина</label>
+                <textarea 
+                  value={muteReason}
+                  onChange={(e) => setMuteReason(e.target.value)}
+                  placeholder="Вкажіть причину покарання..."
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm h-24 resize-none"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsMuting(false)}
+                  className="flex-1 py-3 rounded-xl font-black uppercase tracking-tighter text-xs bg-white/5 text-white hover:bg-white/10 transition-all"
+                >
+                  Скасувати
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl font-black uppercase tracking-tighter text-xs bg-red-600 text-white shadow-lg shadow-red-600/20 hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                  Видати покарання
                 </button>
               </div>
             </form>

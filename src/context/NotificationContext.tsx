@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, AlertCircle, TrendingUp, Wallet, Users, Info, X } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, query, where, onSnapshot, orderBy, limit, addDoc, serverTimestamp, updateDoc, doc, writeBatch } from 'firebase/firestore';
 
 export type NotificationType = 'info' | 'success' | 'error' | 'warning' | 'money' | 'work' | 'social';
 
@@ -39,6 +41,37 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  useEffect(() => {
+    if (!profile?.uid) return;
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', profile.uid),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const newNotifs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Notification[];
+      
+      // Check for new unread notifications to show toast
+      const latest = newNotifs[0];
+      if (latest && !latest.read && (!notifications.length || latest.id !== notifications[0].id)) {
+        setActiveToast(latest);
+        setTimeout(() => setActiveToast(null), 5000);
+      }
+
+      setNotifications(newNotifs);
+    }, (error) => {
+      console.warn("Notification sync error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [profile?.uid]);
+
   const sendNotification = async (
     userId: string, 
     title: string, 
@@ -48,32 +81,44 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     actionType?: string, 
     actionData?: any
   ) => {
-    const newNotif: Notification = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId,
-      title,
-      message,
-      type,
-      read: false,
-      createdAt: new Date().toISOString(),
-      link: link || '',
-      actionType: actionType as any || null,
-      actionData: actionData || null
-    };
-
-    if (userId === profile?.uid) {
-        setNotifications(prev => [newNotif, ...prev]);
-        setActiveToast(newNotif);
-        setTimeout(() => setActiveToast(null), 5000);
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        userId,
+        title,
+        message,
+        type,
+        read: false,
+        createdAt: serverTimestamp(),
+        link: link || '',
+        actionType: actionType || null,
+        actionData: actionData || null
+      });
+    } catch (error) {
+      console.error('Error sending notification:', error);
     }
   };
 
   const markAsRead = async (notificationId: string) => {
-    setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        read: true
+      });
+    } catch (error) {
+      console.error('Error marking as read:', error);
+    }
   };
 
   const markAllAsRead = async () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    if (!profile?.uid) return;
+    try {
+      const batch = writeBatch(db);
+      notifications.filter(n => !n.read).forEach(n => {
+        batch.update(doc(db, 'notifications', n.id), { read: true });
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+    }
   };
 
   const loadMoreNotifications = async () => {

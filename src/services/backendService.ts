@@ -23,7 +23,8 @@ import {
   onSnapshot,
   serverTimestamp,
   runTransaction,
-  addDoc
+  addDoc,
+  deleteDoc
 } from 'firebase/firestore';
 
 class BackendService {
@@ -212,16 +213,74 @@ class BackendService {
     }
   }
 
-  async adminUpdateUser(uid: string, fields: any) {
+  async adminUpdateUser(uid: string, fields: any, adminName: string) {
     const path = `users/${uid}`;
     try {
       await updateDoc(doc(db, path), {
         ...fields,
         updatedAt: serverTimestamp()
       });
+      
+      // If balance changed, log it or notify
+      if (fields.balance !== undefined) {
+         this.sendNotification(uid, {
+           title: 'Фінансова операція',
+           message: `Адміністратор ${adminName} змінив ваш баланс. Новий баланс: ₴${fields.balance.toLocaleString()}`,
+           type: 'money'
+         });
+      }
+
       return { success: true };
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  }
+
+  async adminMuteUser(uid: string, durationMinutes: number, reason: string, adminName: string) {
+    const path = `users/${uid}`;
+    const muteUntil = new Date(Date.now() + durationMinutes * 60 * 1000);
+    try {
+      await updateDoc(doc(db, path), {
+        muteUntil: muteUntil.toISOString(),
+        muteReason: reason,
+        updatedAt: serverTimestamp()
+      });
+
+      this.sendNotification(uid, {
+        title: 'Блокування чату',
+        message: `Ви отримали мут на ${durationMinutes} хв. Причина: ${reason}. Адмін: ${adminName}`,
+        type: 'error'
+      });
+
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  }
+
+  async adminDeleteUser(uid: string) {
+    const path = `users/${uid}`;
+    try {
+      await deleteDoc(doc(db, path));
+      // Also cleanup presence
+      await deleteDoc(doc(db, 'presence', uid));
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  }
+
+  async sendNotification(userId: string, notification: { title: string, message: string, type: string }) {
+    const path = 'notifications';
+    try {
+      await addDoc(collection(db, path), {
+        userId,
+        ...notification,
+        read: false,
+        createdAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
     }
   }
 

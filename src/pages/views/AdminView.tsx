@@ -41,16 +41,26 @@ export const AdminView: React.FC = () => {
     e.preventDefault();
     if (!selectedUser || !adminProfile) return;
 
+    const balance = Number(selectedUser.balance);
+    const socialRating = Number(selectedUser.socialRating);
+
+    if (isNaN(balance) || isNaN(socialRating)) {
+      alert('Будь ласка, введіть коректні числові значення');
+      return;
+    }
+
     try {
+      const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
       await backend.adminUpdateUser(selectedUser.uid, {
-        balance: Number(selectedUser.balance),
-        socialRating: Number(selectedUser.socialRating),
+        balance: balance,
+        socialRating: socialRating,
         role: selectedUser.role
-      }, `${adminProfile.firstName} ${adminProfile.lastName}`);
+      }, adminName);
       alert('Дані оновлено!');
       setIsEditing(false);
       fetchData();
     } catch (error) {
+      console.error('Update error:', error);
       alert('Помилка оновлення');
     }
   };
@@ -59,17 +69,24 @@ export const AdminView: React.FC = () => {
     e.preventDefault();
     if (!selectedUser || !adminProfile) return;
 
+    if (!muteReason.trim()) {
+      alert('Вкажіть причину муту');
+      return;
+    }
+
     try {
+      const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
       await backend.adminMuteUser(
         selectedUser.uid, 
         Number(muteDuration), 
         muteReason, 
-        `${adminProfile.firstName} ${adminProfile.lastName}`
+        adminName
       );
       alert(`Мут видано на ${muteDuration} хв!`);
       setIsMuting(false);
       fetchData();
     } catch (error) {
+      console.error('Mute error:', error);
       alert('Помилка видачі муту');
     }
   };
@@ -82,6 +99,7 @@ export const AdminView: React.FC = () => {
       alert('Акаунт видалено');
       fetchData();
     } catch (error) {
+      console.error('Delete error:', error);
       alert('Помилка видалення');
     }
   };
@@ -90,18 +108,24 @@ export const AdminView: React.FC = () => {
     if (!selectedUser || !adminProfile || !moneyAction.amount) return;
     
     const amount = Number(moneyAction.amount);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Введіть коректну суму');
+      return;
+    }
+
     const newBalance = type === 'add' 
-      ? selectedUser.balance + amount 
-      : Math.max(0, selectedUser.balance - amount);
+      ? Number(selectedUser.balance) + amount 
+      : Math.max(0, Number(selectedUser.balance) - amount);
 
     try {
+      const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
       await backend.adminUpdateUser(selectedUser.uid, {
         balance: newBalance
-      }, `${adminProfile.firstName} ${adminProfile.lastName}`);
+      }, adminName);
       
       await backend.sendNotification(selectedUser.uid, {
         title: type === 'add' ? 'Нарахування коштів' : 'Зняття коштів',
-        message: `Адміністратор ${adminProfile.firstName} ${type === 'add' ? 'видав вам' : 'зняв з вашого рахунку'} ₴${amount.toLocaleString()}. Причина: ${moneyAction.reason || 'Не вказана'}`,
+        message: `Адміністратор ${adminName} ${type === 'add' ? 'видав вам' : 'зняв з вашого рахунку'} ₴${amount.toLocaleString()}. Причина: ${moneyAction.reason || 'Не вказана'}`,
         type: type === 'add' ? 'success' : 'error'
       });
 
@@ -110,6 +134,7 @@ export const AdminView: React.FC = () => {
       setIsEditing(false);
       fetchData();
     } catch (error) {
+      console.error('Money adjust error:', error);
       alert('Помилка оновлення балансу');
     }
   };

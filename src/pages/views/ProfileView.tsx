@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { Passport } from '../../components/Passport';
-import { Shield, TrendingUp, Wallet, Star, UserCheck, MapPin, Users, Search, UserPlus, Check, X, UserMinus, MessageSquare, Clock, ShoppingBag, Fingerprint } from 'lucide-react';
+import { Shield, TrendingUp, Wallet, Star, UserCheck, MapPin, Users, Search, UserPlus, Check, X, UserMinus, MessageSquare, Clock, ShoppingBag, Fingerprint, Lock } from 'lucide-react';
 import { backend } from '../../services/backendService';
 import { useNotifications } from '../../context/NotificationContext';
 import { ChatView } from './ChatView';
@@ -37,7 +37,10 @@ export const ProfileView: React.FC = () => {
     // Listening logic removed as it was Firebase-dependent
   }, [profile?.uid]);
 
+  const isFrozen = profile?.isFrozen;
+
   const handleSearch = async () => {
+    if (isFrozen) return;
     if (searchQuery.length < 3) return;
     setLoading(true);
     try {
@@ -59,6 +62,7 @@ export const ProfileView: React.FC = () => {
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isFrozen) return;
     const file = e.target.files?.[0];
     if (!file || !profile) return;
 
@@ -235,8 +239,13 @@ export const ProfileView: React.FC = () => {
                       balance={profile.balance}
                       signature={profile.signature}
                       passportPhoto={profile.passportPhoto}
-                      onPhotoClick={() => setShowPhotoModal(true)}
+                      onPhotoClick={() => !isFrozen && setShowPhotoModal(true)}
                     />
+                    {isFrozen && (
+                        <div className="mt-4 flex items-center justify-center gap-2 text-blue-500 font-black uppercase text-[10px] tracking-widest bg-blue-500/10 py-3 rounded-xl border border-blue-500/20">
+                            <Lock className="w-4 h-4" /> Доступ обмежено
+                        </div>
+                    )}
                  </div>
               </div>
 
@@ -285,8 +294,12 @@ export const ProfileView: React.FC = () => {
                    </div>
                    <h3 className="text-xs md:text-sm font-black uppercase tracking-widest text-white relative z-10 mb-2">ПРЕМІУМ-СТАТУС</h3>
                    <p className="text-[9px] md:text-[10px] text-text-muted uppercase tracking-widest relative z-10 leading-relaxed">Відкриває доступ до ексклюзивних робіт та автопарку преміум-класу.</p>
-                   <button className="mt-4 md:mt-6 w-full py-3 bg-ukraine-blue text-white rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-colors relative z-10 active:scale-95">
-                      ДІЗНАТИСЬ БІЛЬШЕ
+                   <button 
+                     disabled={isFrozen}
+                     className={`mt-4 md:mt-6 w-full py-3 rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest transition-colors relative z-10 active:scale-95 flex items-center justify-center gap-2 ${isFrozen ? 'bg-white/5 text-text-dim cursor-not-allowed' : 'bg-ukraine-blue text-white hover:bg-blue-600'}`}
+                   >
+                      {isFrozen && <Lock className="w-3.5 h-3.5" />}
+                      {isFrozen ? 'РОЗБЛОКУВАТИ' : 'ДІЗНАТИСЬ БІЛЬШЕ'}
                    </button>
                 </div>
 
@@ -302,12 +315,15 @@ export const ProfileView: React.FC = () => {
                   </div>
                   
                   <button 
+                    disabled={isFrozen}
                     onClick={() => {
+                      if (isFrozen) return;
                       const event = new CustomEvent('changeView', { detail: 'shop' });
                       window.dispatchEvent(event);
                     }}
-                    className="w-full py-3 bg-ukraine-yellow/10 border border-ukraine-yellow/20 text-ukraine-yellow rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-ukraine-yellow hover:text-black transition-all"
+                    className={`w-full py-3 rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isFrozen ? 'bg-white/5 text-text-dim cursor-not-allowed border border-white/5' : 'bg-ukraine-yellow/10 border border-ukraine-yellow/20 text-ukraine-yellow hover:bg-ukraine-yellow hover:text-black'}`}
                   >
+                     {isFrozen && <Lock className="w-3.5 h-3.5" />}
                      ВІДКРИТИ МАГАЗИН
                   </button>
                 </div>

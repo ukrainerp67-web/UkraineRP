@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Shield, MessageCircle, Search, X, Check, CheckCheck, UserPlus, Fingerprint, Award } from 'lucide-react';
+import { Send, Users, Shield, MessageCircle, Search, X, Check, CheckCheck, UserPlus, Fingerprint, Award, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { backend } from '../../services/backendService';
 
@@ -41,13 +41,16 @@ export const ChatView: React.FC = () => {
 
   const isMuted = profile?.muteUntil ? new Date(profile.muteUntil) > new Date() : false;
   const muteTimeLeft = isMuted ? Math.ceil((new Date(profile.muteUntil).getTime() - new Date().getTime()) / (1000 * 60)) : 0;
+  const isFrozen = profile?.isFrozen;
+  const shouldBlockChat = isMuted || isFrozen;
 
   const sendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !profile) return;
 
-    if (isMuted) {
-      alert(`Ваш чат заблоковано ще на ${muteTimeLeft} хв. Причина: ${profile.muteReason || 'Не вказана'}`);
+    if (shouldBlockChat) {
+      if (isFrozen) alert("Ваш акаунт заморожено!");
+      else alert(`Ваш чат заблоковано ще на ${muteTimeLeft} хв. Причина: ${profile.muteReason || 'Не вказана'}`);
       return;
     }
 
@@ -231,19 +234,20 @@ export const ChatView: React.FC = () => {
 
       <form 
         onSubmit={sendMessage} 
-        className={`mt-3 md:mt-4 p-1.5 bg-secondary-dark rounded-xl md:rounded-2xl border border-border-dark flex items-center gap-2 shadow-xl flex-shrink-0 ${isMuted ? 'opacity-60 grayscale cursor-not-allowed' : ''}`}
+        className={`mt-3 md:mt-4 p-1.5 bg-secondary-dark rounded-xl md:rounded-2xl border border-border-dark flex items-center gap-2 shadow-xl flex-shrink-0 ${shouldBlockChat ? 'opacity-60 grayscale cursor-not-allowed' : ''}`}
       >
+        {isFrozen && <Lock className="w-4 h-4 text-blue-500 ml-2" />}
         <input
-          disabled={isMuted}
+          disabled={shouldBlockChat}
           type="text"
-          value={isMuted ? `ЧАТ ЗАБЛОКОВАНО (${muteTimeLeft} ХВ)` : newMessage}
+          value={isFrozen ? 'АКАУНТ ЗАМОРОЖЕНО ✨' : isMuted ? `ЧАТ ЗАБЛОКОВАНО (${muteTimeLeft} ХВ)` : newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          placeholder={isMuted ? "" : "Твоє повідомлення..."}
+          placeholder={shouldBlockChat ? "" : "Твоє повідомлення..."}
           className="flex-1 bg-transparent border-none outline-none px-3 py-2 text-[11px] md:text-sm text-white placeholder:text-text-dim"
         />
         <button 
           type="submit" 
-          disabled={!newMessage.trim() || isMuted}
+          disabled={!newMessage.trim() || shouldBlockChat}
           className="bg-ukraine-blue text-white p-2 md:p-3 rounded-lg md:rounded-xl hover:bg-opacity-80 transition-all active:scale-90 disabled:grayscale disabled:opacity-30 flex-shrink-0"
         >
           <Send className="w-3.5 h-3.5 md:w-4 md:h-4" />
@@ -319,24 +323,30 @@ export const ChatView: React.FC = () => {
                   <div className="mt-6 space-y-3">
                     {profile?.uid !== selectedUser.uid && (
                       <button 
+                        disabled={isFrozen}
                         onClick={() => {
+                          if (isFrozen) return;
                           // TODO: Migrate friend requests to backend
                           alert("Запити у друзі тимчасово недоступні (триває міграція)");
                         }}
-                        className="w-full py-4 bg-ukraine-blue text-white hover:bg-blue-600 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95"
+                        className={`w-full py-4 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 ${isFrozen ? 'bg-white/5 text-text-dim cursor-not-allowed' : 'bg-ukraine-blue text-white hover:bg-blue-600'}`}
                       >
-                         <UserPlus className="w-4 h-4" /> ДОДАТИ В ДРУЗІ
+                         {isFrozen ? <Lock className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />} 
+                         {isFrozen ? 'ДОСТУП ОБМЕЖЕНО' : 'ДОДАТИ В ДРУЗІ'}
                       </button>
                     )}
                     
                     <button 
+                      disabled={isFrozen}
                       onClick={() => {
+                        if (isFrozen) return;
                         setShowProfileModal(false);
                         setNewMessage(`@${selectedUser.firstName}_${selectedUser.lastName} `);
                       }}
-                      className="w-full py-4 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all"
+                      className={`w-full py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isFrozen ? 'bg-white/5 text-text-dim cursor-not-allowed' : 'bg-white/5 hover:bg-white/10 text-white'}`}
                     >
-                      НАПИСАТИ ПОВІДОМЛЕННЯ
+                      {isFrozen && <Lock className="w-4 h-4" />}
+                      {isFrozen ? 'ЗАБЛОКОВАНО' : 'НАПИСАТИ ПОВІДОМЛЕННЯ'}
                     </button>
                   </div>
                 </div>

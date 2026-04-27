@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Users, Shield, TrendingUp, DollarSign, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare, AlertTriangle, Clock } from 'lucide-react';
+import { Users, Shield, TrendingUp, DollarSign, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare, AlertTriangle, Clock, Snowflake, Lock } from 'lucide-react';
 import { backend } from '../../services/backendService';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,8 +13,11 @@ export const AdminView: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isMuting, setIsMuting] = useState(false);
+  const [isFreezing, setIsFreezing] = useState(false);
   const [muteDuration, setMuteDuration] = useState('15');
   const [muteReason, setMuteReason] = useState('Порушення правил чату');
+  const [freezeDuration, setFreezeDuration] = useState('60');
+  const [freezeReason, setFreezeReason] = useState('Порушення правил сервера');
   const [moneyAction, setMoneyAction] = useState({ amount: '', reason: '' });
 
   useEffect(() => {
@@ -122,10 +125,46 @@ export const AdminView: React.FC = () => {
       );
       alert(`Мут видано на ${muteDuration} хв!`);
       setIsMuting(false);
-      fetchData();
     } catch (error) {
       console.error('Mute error:', error);
       alert('Помилка видачі муту');
+    }
+  };
+
+  const handleFreeze = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser || !adminProfile) return;
+
+    if (!freezeReason.trim()) {
+      alert('Вкажіть причину заморозки');
+      return;
+    }
+
+    try {
+      const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
+      await backend.adminFreezeUser(
+        selectedUser.uid, 
+        Number(freezeDuration), 
+        freezeReason, 
+        adminName
+      );
+      alert(`Акаунт заморожено!`);
+      setIsFreezing(false);
+    } catch (error) {
+      console.error('Freeze error:', error);
+      alert('Помилка заморозки акаунта');
+    }
+  };
+
+  const handleUnfreeze = async (uid: string) => {
+    if (!adminProfile) return;
+    try {
+      const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
+      await backend.adminUnfreezeUser(uid, adminName);
+      alert('Акаунт розморожено!');
+    } catch (error) {
+      console.error('Unfreeze error:', error);
+      alert('Помилка розморозки');
     }
   };
 
@@ -285,6 +324,20 @@ export const AdminView: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                       <button 
+                        onClick={() => {
+                          if (user.isFrozen) {
+                            handleUnfreeze(user.uid);
+                          } else {
+                            setSelectedUser(user);
+                            setIsFreezing(true);
+                          }
+                        }}
+                        className={`p-2 rounded-lg transition-colors ${user.isFrozen ? 'bg-ukraine-blue/20 text-ukraine-blue' : 'hover:bg-blue-500/10 text-text-dim hover:text-blue-400'}`}
+                        title={user.isFrozen ? "Розморозити" : "Заморозити"}
+                      >
+                        <Snowflake className={`w-4 h-4 ${user.isFrozen ? 'animate-pulse' : ''}`} />
+                      </button>
                        <button 
                         onClick={() => { setSelectedUser(user); setIsMuting(true); }}
                         className="p-2 hover:bg-red-500/10 rounded-lg text-text-dim hover:text-red-400 transition-colors"
@@ -474,6 +527,72 @@ export const AdminView: React.FC = () => {
                   className="flex-1 py-3 rounded-xl font-black uppercase tracking-tighter text-xs bg-red-600 text-white shadow-lg shadow-red-600/20 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   Видати покарання
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+      {/* Freeze Modal */}
+      {isFreezing && selectedUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card-dark border border-white/10 rounded-3xl w-full max-w-md p-6 shadow-2xl"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-500">
+                    <Snowflake className="w-5 h-5" />
+                 </div>
+                 <div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tighter">Заморозити акаунт</h3>
+                    <p className="text-[10px] text-text-dim font-bold uppercase tracking-widest">{selectedUser.firstName} {selectedUser.lastName}</p>
+                 </div>
+              </div>
+              <button onClick={() => setIsFreezing(false)} className="text-text-dim hover:text-white">✕</button>
+            </div>
+
+            <form onSubmit={handleFreeze} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Термін заморозки</label>
+                <select 
+                  value={freezeDuration}
+                  onChange={(e) => setFreezeDuration(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
+                >
+                  <option value="60">1 година</option>
+                  <option value="180">3 години</option>
+                  <option value="1440">1 доба</option>
+                  <option value="4320">3 доби</option>
+                  <option value="10080">1 тиждень</option>
+                  <option value="-1">Назавжди</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Причина заморозки</label>
+                <textarea 
+                  value={freezeReason}
+                  onChange={(e) => setFreezeReason(e.target.value)}
+                  placeholder="Вкажіть вагому причину..."
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm h-24 resize-none"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsFreezing(false)}
+                  className="flex-1 py-3 rounded-xl font-black uppercase tracking-tighter text-xs bg-white/5 text-white hover:bg-white/10 transition-all"
+                >
+                  Скасувати
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl font-black uppercase tracking-tighter text-xs bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                  Заморозити
                 </button>
               </div>
             </form>

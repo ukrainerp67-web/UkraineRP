@@ -13,7 +13,6 @@ const JOBS = [
   { id: 'trucker', name: 'Далекобійник', pay: 3000, time: 150, difficulty: 'Середньо', minigame: 'tap' },
   { id: 'metro', name: 'Метрополітен', pay: 2000, time: 90, difficulty: 'Середньо', minigame: 'logic' },
   { id: 'builder', name: 'Будівельник', pay: 1500, time: 75, difficulty: 'Легко', minigame: 'tap' },
-  { id: 'test', name: 'Тест', pay: 1000000000, time: 1, difficulty: 'Тест', minigame: 'none' },
 ];
 
 export const JobsView: React.FC = () => {
@@ -228,12 +227,10 @@ export const JobsView: React.FC = () => {
         'work'
       );
 
-      if (workingJob.id !== 'test') {
-        const nextCooldown = Date.now() + 180000; // 3 minutes cooldown
-        const newCooldowns = { ...cooldowns, [workingJob.id]: nextCooldown };
-        setCooldowns(newCooldowns);
-        localStorage.setItem('ua_rp_cooldowns', JSON.stringify(newCooldowns));
-      }
+      const nextCooldown = Date.now() + 180000; // 3 minutes cooldown
+      const newCooldowns = { ...cooldowns, [workingJob.id]: nextCooldown };
+      setCooldowns(newCooldowns);
+      localStorage.setItem('ua_rp_cooldowns', JSON.stringify(newCooldowns));
 
       setStatus('done');
       setTimeout(() => {

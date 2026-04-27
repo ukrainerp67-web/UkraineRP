@@ -38,18 +38,26 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email == 'ukrainerp67@gmail.com';
     }
 
+    function isFrozen(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) && 
+             get(/databases/$(database)/documents/users/$(userId)).data.get('isFrozen', false) == true;
+    }
+
     // --- User Rules ---
     match /users/{userId} {
       allow get, list: if isSignedIn();
       allow create: if isOwner(userId) || isSuperAdmin();
-      allow update: if isOwner(userId) || isAdmin();
+      allow update: if (isOwner(userId) || isAdmin()) && (
+        // Protect frozen state and role from self-edit
+        (!incoming().diff(existing()).affectedKeys().hasAny(['isFrozen', 'freezeUntil', 'freezeReason', 'role']) || isAdmin())
+      );
       allow delete: if isAdmin() && (isSuperAdmin() || existing().get('role', 'user') != 'admin');
     }
 
     // --- Message Rules ---
     match /messages/{messageId} {
       allow read, list: if isSignedIn();
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && (!isFrozen(request.auth.uid) || isAdmin());
       allow update: if isSignedIn() && (resource.data.recipientId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }

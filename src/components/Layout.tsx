@@ -13,7 +13,8 @@ import {
   Landmark,
   VenetianMask,
   Gavel,
-  Shield
+  Shield,
+  Lock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
@@ -86,10 +87,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
         <div className="flex items-center gap-3 md:gap-6">
           {profile?.role === 'admin' && (
             <button 
-              onClick={() => onViewChange('admin')}
-              className={`p-1.5 md:p-2 rounded-lg transition-colors group active:scale-95 ${activeView === 'admin' ? 'bg-ukraine-blue/20 text-ukraine-blue' : 'hover:bg-white/5 text-text-dim hover:text-white'}`}
+              onClick={() => !profile.isFrozen && onViewChange('admin')}
+              className={`p-1.5 md:p-2 rounded-lg transition-colors group active:scale-95 ${activeView === 'admin' ? 'bg-ukraine-blue/20 text-ukraine-blue' : 'hover:bg-white/5 text-text-dim hover:text-white'} ${profile.isFrozen ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
             >
-              <Shield className="w-4 md:w-5 h-4 md:h-5 transition-transform group-hover:rotate-12" />
+              {profile.isFrozen ? (
+                <Lock className="w-4 md:w-5 h-4 md:h-5" />
+              ) : (
+                <Shield className="w-4 md:w-5 h-4 md:h-5 transition-transform group-hover:rotate-12" />
+              )}
             </button>
           )}
 
@@ -140,14 +145,16 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
         >
           {navItems.map((item) => {
             const isActive = activeView === item.id;
+            const isLocked = profile?.isFrozen && item.id !== 'profile' && item.id !== 'notifications';
+
             return (
               <Reorder.Item
                 key={item.id}
                 value={item}
-                onClick={() => onViewChange(item.id)}
+                onClick={() => !isLocked && onViewChange(item.id)}
                 className={`flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl transition-colors relative group cursor-grab active:cursor-grabbing ${
                   isActive ? 'text-ukraine-blue' : 'text-text-dim hover:text-text-muted'
-                }`}
+                } ${isLocked ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
               >
                 <AnimatePresence>
                   {isActive && (
@@ -167,14 +174,18 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
                   transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                   className="relative z-10"
                 >
-                  <item.icon className="w-5 md:w-6 h-5 md:h-6" />
+                  {isLocked ? (
+                    <Lock className="w-5 md:w-6 h-5 md:h-6 text-text-dim" />
+                  ) : (
+                    <item.icon className="w-5 md:w-6 h-5 md:h-6" />
+                  )}
                   {item.id === 'notifications' && unreadCount > 0 && !isActive && (
                     <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-card-dark" />
                   )}
                 </motion.div>
                 
                 <span className={`text-[7px] md:text-[9px] font-black uppercase tracking-[0.2em] relative z-10 transition-transform ${isActive ? 'scale-105' : 'opacity-60'}`}>
-                  {item.label}
+                  {isLocked ? 'ЗАБЛОКОВАНО' : item.label}
                 </span>
               </Reorder.Item>
             );

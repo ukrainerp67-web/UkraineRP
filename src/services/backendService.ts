@@ -267,6 +267,53 @@ class BackendService {
     }
   }
 
+  async adminFreezeUser(uid: string, durationMinutes: number, reason: string, adminName: string) {
+    const path = `users/${uid}`;
+    // -1 means permanent
+    const freezeUntil = durationMinutes === -1 ? 'permanent' : new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+    
+    try {
+      await updateDoc(doc(db, path), {
+        isFrozen: true,
+        freezeUntil,
+        freezeReason: reason,
+        updatedAt: serverTimestamp()
+      });
+
+      this.sendNotification(uid, {
+        title: 'Акаунт Заморожено ❄️',
+        message: `Адміністратор ${adminName} заморозив ваш акаунт ${durationMinutes === -1 ? 'назавжди' : `на ${durationMinutes} хв`}. Причина: ${reason}. Всі функції обмежені.`,
+        type: 'error'
+      });
+
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  }
+
+  async adminUnfreezeUser(uid: string, adminName: string) {
+    const path = `users/${uid}`;
+    try {
+      await updateDoc(doc(db, path), {
+        isFrozen: false,
+        freezeUntil: null,
+        freezeReason: null,
+        updatedAt: serverTimestamp()
+      });
+
+      this.sendNotification(uid, {
+        title: 'Акаунт Розморожено ✨',
+        message: `Адміністратор ${adminName} розморозив ваш акаунт. Приємної гри!`,
+        type: 'success'
+      });
+
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  }
+
   async adminDeleteUser(uid: string) {
     const path = `users/${uid}`;
     try {

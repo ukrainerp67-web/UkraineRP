@@ -7,7 +7,8 @@ import { backend } from '../../services/backendService';
 export const RadaView: React.FC = () => {
   const { profile } = useAuth();
   const [budget, setBudget] = useState<number>(0);
-  const canJoin = profile && profile.socialRating >= 15;
+  const isSuperAdmin = profile?.email === 'ukrainerp67@gmail.com';
+  const canJoin = isSuperAdmin || (profile && profile.socialRating >= 15);
 
   const isGovLeader = profile?.role === 'Президент' || 
                       profile?.role === "Прем'єр Міністр" || 

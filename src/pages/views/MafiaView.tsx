@@ -4,7 +4,8 @@ import { Skull, Target, Users, Zap, ShieldAlert } from 'lucide-react';
 
 export const MafiaView: React.FC = () => {
   const { profile } = useAuth();
-  const canJoin = profile && profile.socialRating <= -15;
+  const isSuperAdmin = profile?.email === 'ukrainerp67@gmail.com';
+  const canJoin = isSuperAdmin || (profile && profile.socialRating <= -15);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-8 text-gray-200">

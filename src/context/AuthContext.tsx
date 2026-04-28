@@ -33,8 +33,10 @@ interface UserProfile {
     stockPurchasedAt?: string;
     lastOpexAt?: string;
   }[];
-
-  // ... rest of the interface
+  muteUntil?: string | null;
+  freezeUntil?: string;
+  freezeReason?: string;
+  updatedAt?: any;
 }
 
 const getTaxPercent = (sr: number) => {
@@ -304,7 +306,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 profileData.role = 'admin';
                 profileData.status = 'Головний Адмін';
                 profileData.isFrozen = false;
-                profileData.muteUntil = undefined;
+                profileData.muteUntil = null;
               }
 
               setProfile(profileData);

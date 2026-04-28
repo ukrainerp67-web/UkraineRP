@@ -10,8 +10,7 @@ export const RadaView: React.FC = () => {
   const canJoin = profile && profile.socialRating >= 15;
 
   const isGovLeader = profile?.role === 'Президент' || 
-                      profile?.role === 'Прем\'єр-міністр' || 
-                      profile?.role === 'Прем\'єр міністр' || 
+                      profile?.role === "Прем'єр Міністр" || 
                       profile?.role === 'Міністр фінансів' ||
                       profile?.role === 'admin';
 

@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Users, Shield, TrendingUp, DollarSign, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare, AlertTriangle, Clock, Snowflake, Lock } from 'lucide-react';
+import { Users, Shield, TrendingUp, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare, AlertTriangle, Clock, Snowflake, Lock } from 'lucide-react';
 import { backend } from '../../services/backendService';
 import { useAuth } from '../../context/AuthContext';
+
+const HryvniaSign = ({ className }: { className?: string }) => (
+  <span className={`${className} flex items-center justify-center font-black select-none`}>₴</span>
+);
 
 export const AdminView: React.FC = () => {
   const { profile: adminProfile } = useAuth();
@@ -245,7 +249,7 @@ export const AdminView: React.FC = () => {
         <div className="bg-card-dark border border-white/5 p-4 rounded-2xl">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-lg bg-ukraine-yellow/20 flex items-center justify-center text-ukraine-yellow">
-              <DollarSign className="w-4 h-4" />
+              <HryvniaSign className="w-4 h-4 text-xs" />
             </div>
             <span className="text-[10px] font-black uppercase text-text-dim tracking-tighter">Економіка</span>
           </div>
@@ -444,6 +448,9 @@ export const AdminView: React.FC = () => {
                   >
                     <option value="user">Гравець</option>
                     <option value="admin">Адміністратор</option>
+                    <option value="Президент">Президент</option>
+                    <option value="Прем'єр Міністр">Прем'єр Міністр</option>
+                    <option value="Міністр фінансів">Міністр фінансів</option>
                   </select>
                 </div>
               )}

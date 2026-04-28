@@ -122,6 +122,7 @@ export const Registration: React.FC = () => {
         birthDate: new Date().toLocaleDateString('uk-UA'),
         balance: 5000,
         socialRating: 0,
+        businesses: [],
         status: 'Громадянин',
         role: 'user'
       };

@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Car as CarIcon, ShoppingBag, Shield, Heart, Zap, Star, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Home, Car as CarIcon, ShoppingBag, Shield, Heart, Zap, Star, TrendingUp, TrendingDown, Building2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { backend } from '../../services/backendService';
+import { BUSINESS_TYPES, BusinessMetadata } from '../../constants';
+
+const HryvniaSign = ({ className }: { className?: string }) => (
+  <span className={`${className} flex items-center justify-center font-black select-none`}>₴</span>
+);
 
 const PROPERTY = [
   { id: 'app_1', name: 'Квартира в ЖК', price: 150000, type: 'property', image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&q=80&w=800' },
@@ -25,8 +30,52 @@ const DONATIONS = [
 export const ShopView: React.FC = () => {
   const { profile, refreshProfile } = useAuth();
   const { sendNotification } = useNotifications();
-  const [category, setCategory] = useState<'property' | 'vehicles' | 'donations'>('property');
+  const [category, setCategory] = useState<'property' | 'vehicles' | 'donations' | 'business'>('property');
   const [loading, setLoading] = useState(false);
+
+  const buyBusiness = React.useCallback(async (business: BusinessMetadata) => {
+    if (!profile) return;
+    if (profile.balance < business.price) {
+      alert('Недостатньо коштів на балансі!');
+      return;
+    }
+
+    const alreadyOwned = profile.businesses?.some(b => b.businessId === business.id);
+    if (alreadyOwned) {
+      alert('Ви вже володієте цим бізнесом!');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newBusiness = {
+        businessId: business.id,
+        purchasedAt: new Date().toISOString()
+      };
+
+      const updatedProfile = {
+        ...profile,
+        balance: profile.balance - business.price,
+        businesses: [...(profile.businesses || []), newBusiness],
+        updatedAt: new Date().toISOString()
+      };
+
+      await backend.saveProfile(updatedProfile);
+      await refreshProfile();
+
+      await sendNotification(
+        profile.uid,
+        'Придбано бізнес',
+        `Ви успішно придбали [${business.name}] за ₴${business.price.toLocaleString()}`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Error buying business:', error);
+      alert('Помилка при покупці бізнесу');
+    } finally {
+      setLoading(false);
+    }
+  }, [profile, sendNotification, refreshProfile]);
 
   const buyRating = React.useCallback(async (amount: number, price: number) => {
     if (!profile) return;
@@ -61,7 +110,11 @@ export const ShopView: React.FC = () => {
     }
   }, [profile, sendNotification, refreshProfile]);
 
-  const currentItems = category === 'property' ? PROPERTY : category === 'vehicles' ? VEHICLES : DONATIONS;
+  const currentItems = 
+    category === 'property' ? PROPERTY : 
+    category === 'vehicles' ? VEHICLES : 
+    category === 'business' ? BUSINESS_TYPES :
+    DONATIONS;
 
   return (
     <div className="space-y-4 md:space-y-6 pb-24 md:pb-8">
@@ -85,10 +138,16 @@ export const ShopView: React.FC = () => {
             <CarIcon className="w-3.5 h-3.5 md:w-4 md:h-4" /> Авто
           </button>
           <button 
+            onClick={() => setCategory('business')}
+            className={`flex-1 min-w-[100px] md:min-w-[120px] px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl flex items-center justify-center gap-1.5 md:gap-2 text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all border ${category === 'business' ? 'bg-ukraine-blue text-white border-ukraine-blue shadow-lg shadow-ukraine-blue/20' : 'bg-secondary-dark text-text-muted border-border-dark hover:text-white'}`}
+          >
+            <Building2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> Бізнес
+          </button>
+          <button 
             onClick={() => setCategory('donations')}
             className={`flex-1 min-w-[100px] md:min-w-[120px] px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl flex items-center justify-center gap-1.5 md:gap-2 text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all border ${category === 'donations' ? 'bg-yellow-600/20 text-ukraine-yellow border-ukraine-yellow shadow-lg' : 'bg-secondary-dark text-text-muted border-border-dark hover:text-white'}`}
           >
-            <DollarSign className="w-3.5 h-3.5 md:w-4 md:h-4" /> Донат
+            <HryvniaSign className="w-3.5 h-3.5 md:w-4 md:h-4 text-[10px] md:text-sm" /> Донат
           </button>
         </div>
       </header>
@@ -143,9 +202,31 @@ export const ShopView: React.FC = () => {
               </div>
               <div className="p-5">
                 <h3 className="font-bold text-[#E0E0E0] mb-1">{item.name || `${item.brand} ${item.model}`}</h3>
-                <p className="text-[9px] text-text-dim uppercase tracking-widest">Серія: LUXURY ASSETS 2024</p>
-                <button className="w-full mt-6 py-3.5 bg-secondary-dark border border-border-dark rounded-xl text-[10px] font-black uppercase tracking-[0.2em] text-[#E0E0E0] hover:bg-ukraine-blue hover:text-white hover:border-ukraine-blue transition-all">
-                  Оглянути
+                <p className="text-[9px] text-text-dim uppercase tracking-widest">{category === 'business' ? item.category : 'Серія: LUXURY ASSETS 2024'}</p>
+                
+                {category === 'business' && (
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="bg-bg-dark/50 p-2 rounded-lg border border-border-dark">
+                      <p className="text-[7px] text-text-muted uppercase font-black">Прибуток</p>
+                      <p className="text-xs text-green-400 font-black">₴{item.gross.toLocaleString()}</p>
+                      <p className="text-[6px] text-text-dim uppercase">~₴{Math.floor(item.gross / 24).toLocaleString()} / год</p>
+                    </div>
+                    <div className="bg-bg-dark/50 p-2 rounded-lg border border-border-dark">
+                      <p className="text-[7px] text-text-muted uppercase font-black">Матч/Товар</p>
+                      <p className="text-xs text-ukraine-yellow font-black">₴{item.stockCost.toLocaleString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                <button 
+                  onClick={() => {
+                    if (category === 'business') buyBusiness(item);
+                    else alert('Ця функція в розробці. Оглянути можна, придбати пізніше.');
+                  }}
+                  disabled={loading}
+                  className="w-full mt-6 py-3.5 bg-secondary-dark border border-border-dark rounded-xl text-[10px] font-black uppercase tracking-[0.2em] text-[#E0E0E0] hover:bg-ukraine-blue hover:text-white hover:border-ukraine-blue transition-all disabled:opacity-50"
+                >
+                  {loading ? 'ОБРОБКА...' : category === 'business' ? 'Придбати Бізнес' : 'Оглянути'}
                 </button>
               </div>
             </motion.div>

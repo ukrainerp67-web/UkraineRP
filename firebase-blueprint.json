@@ -138,6 +138,15 @@
         "isTyping": { "type": "boolean" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       }
+    },
+    "System": {
+      "title": "System",
+      "description": "Global system state and economy",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -180,6 +189,10 @@
     "/presence/{userId}": {
       "schema": "Presence",
       "description": "Real-time user online status"
+    },
+    "/system/{docId}": {
+      "schema": "System",
+      "description": "Global system parameters like budget"
     }
   }
 }

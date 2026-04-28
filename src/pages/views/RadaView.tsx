@@ -1,23 +1,141 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
-import { Building2, Gavel, Award, Search, HelpCircle, Briefcase } from 'lucide-react';
+import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText } from 'lucide-react';
+import { backend } from '../../services/backendService';
 
 export const RadaView: React.FC = () => {
   const { profile } = useAuth();
+  const [budget, setBudget] = useState<number>(0);
   const canJoin = profile && profile.socialRating >= 15;
+
+  const isGovLeader = profile?.role === 'Президент' || 
+                      profile?.role === 'Прем\'єр-міністр' || 
+                      profile?.role === 'Прем\'єр міністр' || 
+                      profile?.role === 'Міністр фінансів' ||
+                      profile?.role === 'admin';
+
+  useEffect(() => {
+    if (isGovLeader) {
+      const fetchBudget = async () => {
+        const b = await backend.getBudget();
+        setBudget(b || 0);
+      };
+      fetchBudget();
+      const interval = setInterval(fetchBudget, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isGovLeader]);
+
+  const [supportAmount, setSupportAmount] = useState(1000);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+
+  const handleDistribute = async (type: 'support' | 'pension') => {
+    if (!profile) return;
+    const amount = type === 'support' ? supportAmount : Math.floor(supportAmount * 1.5);
+    
+    if (budget < amount) {
+      alert('Недостатньо коштів у бюджеті!');
+      return;
+    }
+
+    setLoadingAction(type);
+    try {
+      const res = await backend.distributeSocialSupport(amount) as any;
+      if (res.success) {
+        alert(`Успішно нараховано по ₴${amount.toLocaleString()} для ${res.count || 0} громадян!`);
+        const b = await backend.getBudget();
+        setBudget(b || 0);
+      } else {
+        alert('Помилка: ' + (res.error?.message || 'Невідома помилка'));
+      }
+    } catch (error) {
+      console.error('Distribution error:', error);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-8 text-gray-200">
       <header className="bg-gradient-to-br from-blue-900/30 to-black p-6 md:p-8 rounded-2xl md:rounded-3xl border border-blue-500/20 relative overflow-hidden">
-        <div className="relative z-10 text-center sm:text-left">
-          <h2 className="text-xl md:text-3xl font-black italic tracking-tighter text-white flex items-center justify-center sm:justify-start gap-4">
-            <Building2 className="w-8 h-8 md:w-10 md:h-10 text-blue-400" />
-            ВЕРХОВНА РАДА УКРАЇНИ
-          </h2>
-          <p className="text-blue-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mt-2 underline decoration-yellow-400 underline-offset-4">Законотворчість та Розбудова</p>
+        <div className="relative z-10 text-center sm:text-left flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <h2 className="text-xl md:text-3xl font-black italic tracking-tighter text-white flex items-center justify-center sm:justify-start gap-4">
+              <Building2 className="w-8 h-8 md:w-10 md:h-10 text-blue-400" />
+              ВЕРХОВНА РАДА УКРАЇНИ
+            </h2>
+            <p className="text-blue-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mt-2 underline decoration-yellow-400 underline-offset-4">Законотворчість та Розбудова</p>
+          </div>
+
+          {isGovLeader && (
+            <div className="bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-md">
+               <div className="flex items-center gap-3 mb-1">
+                  <Landmark className="w-4 h-4 text-ukraine-blue" />
+                  <p className="text-[10px] font-black text-text-dim uppercase tracking-widest">Державний Бюджет</p>
+               </div>
+               <p className="text-xl font-black text-white">₴{budget.toLocaleString()}</p>
+            </div>
+          )}
         </div>
         <Building2 className="absolute -bottom-8 -right-8 w-32 md:w-48 h-32 md:h-48 text-blue-400/5 rotate-12 pointer-events-none" />
       </header>
+
+      {isGovLeader && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid grid-cols-1 md:grid-cols-2 gap-6"
+        >
+          <div className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6">
+            <h3 className="text-lg font-black text-white uppercase tracking-tighter flex items-center gap-3">
+              <Award className="w-5 h-5 text-ukraine-blue" />
+              Соціальна Підтримка
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-text-dim uppercase tracking-widest mb-1 block">Сума виплати на 1 особу (₴)</label>
+                <input 
+                  type="number"
+                  value={supportAmount}
+                  onChange={(e) => setSupportAmount(Number(e.target.value))}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => handleDistribute('support')}
+                  disabled={loadingAction !== null}
+                  className="p-4 bg-ukraine-blue hover:bg-ukraine-blue/80 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50"
+                >
+                  {loadingAction === 'support' ? 'ОБРОБКА...' : 'Є-ПІДТРИМКА'}
+                </button>
+                <button 
+                  onClick={() => handleDistribute('pension')}
+                  disabled={loadingAction !== null}
+                  className="p-4 bg-ukraine-yellow hover:bg-ukraine-yellow/80 text-black rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50"
+                >
+                  {loadingAction === 'pension' ? 'ОБРОБКА...' : 'ПЕНСІЇ'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-4">
+             <h3 className="text-lg font-black text-white uppercase tracking-tighter flex items-center gap-3">
+              <Gavel className="w-5 h-5 text-ukraine-blue" />
+              Державне Управління
+            </h3>
+            <p className="text-xs text-text-muted font-medium">Ви як представник влади маєте право керувати державними коштами. Виплати здійснюються всім громадянам одночасно та автоматично списуються з бюджету.</p>
+            <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+              <p className="text-[10px] font-black text-text-dim uppercase mb-1">Прогнозовані витрати:</p>
+              <p className="text-sm font-bold text-white italic">₴{(supportAmount * 10).toLocaleString()} (орієнтовно на 10 гравців)</p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {!canJoin ? (
         <div className="game-card p-6 md:p-10 text-center border-blue-500/20 bg-blue-500/5">

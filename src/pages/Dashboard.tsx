@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Layout } from '../components/Layout';
 import { ProfileView } from './views/ProfileView';
@@ -13,13 +13,47 @@ import { ChatView } from './views/ChatView';
 import { NotificationsView } from './views/NotificationsView';
 import { BusinessView } from './views/BusinessView';
 import { AdminView } from './views/AdminView';
-import { Snowflake, Lock, Bell } from 'lucide-react';
+import { Snowflake, Lock, Bell, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [lastTab, setLastTab] = useState('profile');
+  const [showLockedMessage, setShowLockedMessage] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<string>('');
   const { profile } = useAuth();
+
+  useEffect(() => {
+    if (!profile?.freezeUntil || profile.freezeUntil === 'permanent') {
+      setTimeLeft(profile?.freezeUntil === 'permanent' ? 'НАЗАВЖДИ' : '');
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = new Date();
+      const end = new Date(profile.freezeUntil!);
+      const diff = end.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeLeft('00:00:00');
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const secs = Math.floor((diff % (1000 * 60)) / 1000);
+
+      let timeStr = '';
+      if (days > 0) timeStr += `${days}д `;
+      timeStr += `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      setTimeLeft(timeStr);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [profile?.freezeUntil]);
 
   useEffect(() => {
     // Admin revocation check: If user was in admin panel but role changed, kick back to profile
@@ -33,9 +67,21 @@ export const Dashboard: React.FC = () => {
     }
   }, [profile?.role, profile?.isFrozen, activeTab]);
 
+  useEffect(() => {
+    const handleViewChangeEvent = (e: any) => {
+      if (e.detail) {
+        handleViewChange(e.detail);
+      }
+    };
+    window.addEventListener('changeView', handleViewChangeEvent);
+    return () => window.removeEventListener('changeView', handleViewChangeEvent);
+  }, [profile]);
+
   const handleViewChange = (newTab: string) => {
     // Prevent navigating to other tabs if frozen
     if (profile?.isFrozen && newTab !== 'profile' && newTab !== 'notifications') {
+      setShowLockedMessage(true);
+      setTimeout(() => setShowLockedMessage(false), 3000);
       return;
     }
 
@@ -82,12 +128,13 @@ export const Dashboard: React.FC = () => {
                   <Snowflake className="w-10 h-10 animate-pulse" />
                </div>
                <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">АКАУНТ ЗАМОРОЖЕНО</h2>
+               <div className="bg-blue-600/20 py-2 px-4 rounded-xl mb-4 border border-blue-500/30">
+                  <span className="text-blue-400 font-black text-xl tracking-widest block font-mono">{timeLeft}</span>
+                  <span className="text-[10px] text-blue-400/80 font-bold uppercase tracking-widest">до розморозки</span>
+               </div>
                <p className="text-text-dim text-sm mb-6 leading-relaxed">
                   Ваш акаунт було тимчасово обмежено адміністрацією.<br/>
                   <span className="text-blue-400 font-bold mt-2 block">ПРИЧИНА: {profile.freezeReason || 'Порушення правил'}</span>
-                  {profile.freezeUntil && profile.freezeUntil !== 'permanent' && (
-                    <span className="text-[10px] text-text-muted mt-2 block">ДО: {new Date(profile.freezeUntil).toLocaleString('uk-UA')}</span>
-                  )}
                </p>
                <button 
                   onClick={() => handleViewChange('notifications')}
@@ -103,6 +150,28 @@ export const Dashboard: React.FC = () => {
         <div className={`flex-1 min-w-0 ${profile?.isFrozen && activeTab !== 'notifications' ? 'pointer-events-none filter blur-[1px]' : ''}`}>
           {renderView()}
         </div>
+
+        <AnimatePresence>
+          {showLockedMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-red-600/40 flex items-center gap-3 border border-red-500"
+            >
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                 <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="font-black text-sm uppercase tracking-tighter">Акаунт заблокований</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                   <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                   <p className="text-[10px] font-bold uppercase tracking-widest opacity-90">Залишилось: {timeLeft}</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
         {/* Persistent Chat for Desktop */}
         {activeTab !== 'chat' && !profile?.isFrozen && (

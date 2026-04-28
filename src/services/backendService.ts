@@ -113,6 +113,93 @@ class BackendService {
     }
   }
 
+  async getBudget() {
+    try {
+      const docRef = doc(db, 'system', 'budget');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data().amount || 0;
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error getting budget:', error);
+      return 0;
+    }
+  }
+
+  async addToBudget(amount: number) {
+    try {
+      const docRef = doc(db, 'system', 'budget');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        await updateDoc(docRef, {
+          amount: (docSnap.data().amount || 0) + amount,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await setDoc(docRef, {
+          amount: amount,
+          updatedAt: serverTimestamp()
+        });
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating budget:', error);
+      return { success: false, error };
+    }
+  }
+
+  async removeFromBudget(amount: number) {
+    try {
+      const docRef = doc(db, 'system', 'budget');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const currentAmount = docSnap.data().amount || 0;
+        if (currentAmount < amount) throw new Error('Недостатньо коштів у бюджеті');
+        await updateDoc(docRef, {
+          amount: currentAmount - amount,
+          updatedAt: serverTimestamp()
+        });
+        return { success: true };
+      }
+      throw new Error('Бюджет не знайдено');
+    } catch (error) {
+      console.error('Error removing from budget:', error);
+      return { success: false, error };
+    }
+  }
+
+  async distributeSocialSupport(amountPerPlayer: number, filterRole: string = 'user') {
+    try {
+      const { collection, query, where, getDocs, writeBatch } = await import('firebase/firestore');
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('role', '==', filterRole));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) return { success: true, count: 0 };
+
+      const totalCost = querySnapshot.size * amountPerPlayer;
+      const budgetResult = await this.removeFromBudget(totalCost);
+      
+      if (!budgetResult.success) return budgetResult;
+
+      const batch = writeBatch(db);
+      querySnapshot.forEach((doc) => {
+        const userRef = doc.ref;
+        batch.update(userRef, {
+          balance: (doc.data().balance || 0) + amountPerPlayer,
+          updatedAt: serverTimestamp()
+        });
+      });
+
+      await batch.commit();
+      return { success: true, count: querySnapshot.size };
+    } catch (error) {
+      console.error('Error distributing social support:', error);
+      return { success: false, error };
+    }
+  }
+
   async saveProfile(profile: any) {
     const path = `users/${profile.uid}`;
     try {
@@ -145,7 +232,11 @@ class BackendService {
     try {
       const docSnap = await getDoc(doc(db, path));
       if (docSnap.exists()) {
-        return docSnap.data();
+        const data = docSnap.data();
+        return {
+          taxDebt: 0,
+          ...data
+        } as any;
       }
       return null;
     } catch (error) {
@@ -204,6 +295,34 @@ class BackendService {
         
         transaction.update(fromRef, { balance: fromData.balance - amount, updatedAt: serverTimestamp() });
         transaction.update(toRef, { balance: (toSnap.data().balance || 0) + amount, updatedAt: serverTimestamp() });
+      });
+      return { success: true };
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  }
+
+  async payTax(uid: string, amount: number) {
+    const userRef = doc(db, 'users', uid);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) throw new Error("Користувача не знайдено");
+        
+        const data = userDoc.data();
+        const currentBalance = data.balance || 0;
+        const currentDebt = data.taxDebt || 0;
+        
+        if (currentBalance < amount) throw new Error("Недостатньо коштів на балансі");
+        
+        const payAmount = Math.min(amount, currentDebt);
+        if (payAmount <= 0) throw new Error("У вас немає заборгованості");
+
+        transaction.update(userRef, {
+          balance: currentBalance - payAmount,
+          taxDebt: currentDebt - payAmount,
+          updatedAt: serverTimestamp()
+        });
       });
       return { success: true };
     } catch (error: any) {

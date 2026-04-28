@@ -128,5 +128,15 @@ service cloud.firestore {
       allow update: if isSignedIn() && (resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
       allow delete: if isSignedIn() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid);
     }
+
+    // --- System Rules ---
+    match /system/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // --- Health Check Rules ---
+    match /_health_/{docId} {
+      allow read: if true;
+    }
   }
 }

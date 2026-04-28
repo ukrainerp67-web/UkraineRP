@@ -195,7 +195,7 @@ export const ProfileView: React.FC = () => {
                 { label: 'Баланс', value: `₴${profile.balance.toLocaleString()}`, icon: Wallet, color: 'text-ukraine-yellow' },
                 { label: 'Рейтинг', value: profile.socialRating, icon: Star, color: 'text-blue-400' },
                 { label: 'Статус', value: 'Громадянин', icon: UserCheck, color: 'text-green-400' },
-                { label: 'Регіон', value: 'Україна', icon: MapPin, color: 'text-red-400' },
+                { label: 'Регіон', value: 'Україна', icon: MapPin, color: 'text-ukraine-blue' },
               ].map((stat, idx) => (
                 <motion.div
                   key={stat.label}
@@ -209,7 +209,7 @@ export const ProfileView: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[7px] md:text-[10px] text-text-muted font-black uppercase tracking-widest truncate">{stat.label}</p>
-                    <p className="text-[11px] md:text-lg font-black text-white truncate">{stat.value}</p>
+                    <h4 className="text-[10px] md:text-lg font-black text-white truncate">{stat.value}</h4>
                   </div>
                 </motion.div>
               ))}

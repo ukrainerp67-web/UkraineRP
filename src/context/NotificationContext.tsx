@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, AlertCircle, TrendingUp, Wallet, Users, Info, X } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, orderBy, limit, addDoc, serverTimestamp, updateDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, addDoc, serverTimestamp, updateDoc, doc, writeBatch, getDocs, Timestamp } from 'firebase/firestore';
 
 export type NotificationType = 'info' | 'success' | 'error' | 'warning' | 'money' | 'work' | 'social';
 
@@ -44,11 +44,46 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (!profile?.uid) return;
 
+    const cleanupOldNotifications = async () => {
+      try {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const q = query(
+          collection(db, 'notifications'),
+          where('userId', '==', profile.uid),
+          where('createdAt', '<', Timestamp.fromDate(twentyFourHoursAgo))
+        );
+
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) return;
+
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+      } catch (error) {
+        // Silently fail cleanup if index isn't ready or other error
+        console.warn('Notification cleanup skipped:', error);
+      }
+    };
+
+    cleanupOldNotifications();
+    
+    // Cleanup every hour while stay in game
+    const interval = setInterval(cleanupOldNotifications, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [profile?.uid]);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const q = query(
       collection(db, 'notifications'),
       where('userId', '==', profile.uid),
+      where('createdAt', '>', Timestamp.fromDate(twentyFourHoursAgo)),
       orderBy('createdAt', 'desc'),
-      limit(20)
+      limit(30)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {

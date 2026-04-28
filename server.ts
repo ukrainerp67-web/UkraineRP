@@ -19,9 +19,9 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const DATA_DIR = path.join(__dirname, "data");
-const JWT_SECRET = "ukraine-rp-secret-key-123";
+const JWT_SECRET = process.env.JWT_SECRET || "ukraine-rp-secret-key-123";
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -241,23 +241,46 @@ io.on("connection", (socket) => {
   });
 });
 
-// Serve frontend in production
-if (process.env.NODE_ENV === "production") {
-  const distPath = path.join(__dirname, "dist");
-  app.use(express.static(distPath));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
+async function startServer() {
+  console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
+  
+  // Serve frontend in production
+  if (process.env.NODE_ENV === "production") {
+    const distPath = path.join(process.cwd(), "dist");
+    console.log(`Serving static files from: ${distPath}`);
+    
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        const indexPath = path.join(distPath, "index.html");
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send("Front-end index.html not found in dist. Build might have failed.");
+        }
+      });
+    } else {
+      console.error("DIST DIRECTORY NOT FOUND! Static serving will fail.");
+      app.get("*", (req, res) => {
+        res.status(500).send("Server configuration error: dist directory missing. Please ensure 'npm run build' was executed.");
+      });
+    }
+  } else {
+    try {
+      const vite = await import("vite");
+      const viteServer = await vite.createServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(viteServer.middlewares);
+    } catch (e) {
+      console.error("Vite server creation failed:", e);
+    }
+  }
+
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server started on http://0.0.0.0:${PORT}`);
   });
-} else {
-    import("vite").then(async (vite) => {
-        const viteServer = await vite.createServer({
-            server: { middlewareMode: true },
-            appType: "spa",
-        });
-        app.use(viteServer.middlewares);
-    });
 }
 
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server started on http://0.0.0.0:${PORT}`);
-});
+startServer();

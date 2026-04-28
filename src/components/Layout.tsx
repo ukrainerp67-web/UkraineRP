@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -19,6 +19,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 import { Bell } from 'lucide-react';
+import { backend } from '../services/backendService';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,17 +31,46 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
   const { profile, onlinePlayers, logout } = useAuth();
   const { unreadCount } = useNotifications();
   const navigate = useNavigate();
+  const [budget, setBudget] = useState<number>(0);
 
   const onlineCount = onlinePlayers.length;
 
-  const [navItems, setNavItems] = useState([
+  const isGovLeader = profile?.role === 'Президент' || 
+                      profile?.role === "Прем'єр Міністр" || 
+                      profile?.role === 'Міністр фінансів' ||
+                      profile?.role === 'admin';
+
+  const isInGov = isGovLeader || 
+                  profile?.role === 'Депутат' || 
+                  profile?.role === 'Працівник ВФБ';
+
+  useEffect(() => {
+    if (isGovLeader) {
+      const unsubscribe = backend.onBudgetUpdate((amount) => {
+        setBudget(amount);
+      });
+      return () => unsubscribe();
+    }
+  }, [isGovLeader]);
+
+  const allNavItems = [
     { id: 'profile', icon: User, label: 'Профіль' },
     { id: 'jobs', icon: Briefcase, label: 'Робота' },
     { id: 'business', icon: Building2, label: 'Бізнес' },
     { id: 'bank', icon: Landmark, label: 'Банк' },
     { id: 'mafia', icon: VenetianMask, label: 'Мафія' },
     { id: 'rada', icon: Gavel, label: 'ВРУ' },
-  ]);
+  ];
+
+  const [navItems, setNavItems] = useState(allNavItems);
+
+  useEffect(() => {
+    if (isInGov) {
+      setNavItems(allNavItems.filter(item => item.id !== 'mafia'));
+    } else {
+      setNavItems(allNavItems);
+    }
+  }, [profile?.role]);
 
   const handleLogout = () => {
     logout();
@@ -111,6 +141,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
           </button>
 
           <div className="flex flex-col items-end">
+            {isGovLeader && (
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <Landmark className="w-2.5 h-2.5 text-blue-400" />
+                <span className="text-[10px] font-black text-ukraine-blue">₴{budget.toLocaleString()}</span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 md:gap-2">
               <Wallet className="w-3 md:w-3.5 h-3 md:h-3.5 text-ukraine-yellow" />
               <span className="text-xs md:text-sm font-black text-ukraine-yellow">₴{profile?.balance.toLocaleString()}</span>

@@ -127,6 +127,19 @@ class BackendService {
     }
   }
 
+  onBudgetUpdate(callback: (amount: number) => void) {
+    const docRef = doc(db, 'system', 'budget');
+    return onSnapshot(docRef, (doc) => {
+      if (doc.exists()) {
+        callback(doc.data().amount || 0);
+      } else {
+        callback(0);
+      }
+    }, (error) => {
+      console.error("Budget snapshot error", error);
+    });
+  }
+
   async addToBudget(amount: number) {
     try {
       const docRef = doc(db, 'system', 'budget');

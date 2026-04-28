@@ -14,15 +14,16 @@ export const RadaView: React.FC = () => {
                       profile?.role === 'Міністр фінансів' ||
                       profile?.role === 'admin';
 
+  const isInGov = isGovLeader || 
+                  profile?.role === 'Депутат' || 
+                  profile?.role === 'Працівник ВФБ';
+
   useEffect(() => {
     if (isGovLeader) {
-      const fetchBudget = async () => {
-        const b = await backend.getBudget();
-        setBudget(b || 0);
-      };
-      fetchBudget();
-      const interval = setInterval(fetchBudget, 10000);
-      return () => clearInterval(interval);
+      const unsubscribe = backend.onBudgetUpdate((amount) => {
+        setBudget(amount);
+      });
+      return () => unsubscribe();
     }
   }, [isGovLeader]);
 
@@ -43,8 +44,6 @@ export const RadaView: React.FC = () => {
       const res = await backend.distributeSocialSupport(amount) as any;
       if (res.success) {
         alert(`Успішно нараховано по ₴${amount.toLocaleString()} для ${res.count || 0} громадян!`);
-        const b = await backend.getBudget();
-        setBudget(b || 0);
       } else {
         alert('Помилка: ' + (res.error?.message || 'Невідома помилка'));
       }
@@ -136,7 +135,7 @@ export const RadaView: React.FC = () => {
         </motion.div>
       )}
 
-      {!isGovLeader && (
+      {!isInGov && (
         <>
           {!canJoin ? (
             <div className="game-card p-6 md:p-10 text-center border-blue-500/20 bg-blue-500/5">

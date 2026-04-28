@@ -29,7 +29,9 @@ interface UserProfile {
     isStocked?: boolean;
     lastActionAt?: any;
     lastProfitAt?: any;
-    stockReady?: boolean; // Готовність до збору прибутку
+    stockReady?: boolean; 
+    stockPurchasedAt?: string;
+    lastOpexAt?: string;
   }[];
 
   // ... rest of the interface
@@ -65,6 +67,7 @@ interface AuthContextType {
   logout: () => void;
   updateBusinessState: (businessId: string, updates: Partial<any>) => Promise<void>;
   collectProfits: (businessId: string, gross: number, evade?: boolean) => Promise<{ netProfit: number; taxAmount: number; evade: boolean } | undefined>;
+  buyGlobalStock: () => Promise<number>;
   endDay: () => Promise<number>;
   taxRate: number;
 }
@@ -80,6 +83,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   updateBusinessState: async () => {},
   collectProfits: async () => undefined,
+  buyGlobalStock: async () => 0,
   endDay: async () => 0,
   taxRate: 0.05
 });
@@ -155,13 +159,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const taxAmount = evade ? 0 : Math.floor(gross * taxRate);
     const netProfit = gross - taxAmount;
 
+    const now = new Date().toISOString();
     const newBusinesses = profile.businesses?.map(b => 
       b.businessId === businessId ? { 
         ...b, 
-        isStocked: false, 
-        stockReady: false, 
-        lastProfitAt: new Date().toISOString(),
-        lastActionAt: null 
+        lastProfitAt: now,
+        lastActionAt: now 
       } : b
     );
 
@@ -170,14 +173,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       balance: profile.balance + netProfit,
       socialRating: evade ? Math.max(0, profile.socialRating - 20) : profile.socialRating + 5,
       businesses: newBusinesses,
-      updatedAt: new Date().toISOString()
+      updatedAt: now
     };
 
     if (!evade && taxAmount > 0) {
       await backend.addToBudget(taxAmount);
+      await backend.logEvent({
+        type: 'tax',
+        player: `${profile.firstName} ${profile.lastName}`,
+        message: `сплачено податків на суму ₴${taxAmount.toLocaleString()} до держбюджету`
+      });
+    } else if (evade) {
+      await backend.logEvent({
+        type: 'evade',
+        player: `${profile.firstName} ${profile.lastName}`,
+        message: `ризикнув та забрав весь прибуток ₴${gross.toLocaleString()} собі в кишеню`
+      });
     }
+
     await backend.saveProfile(updatedProfile);
     return { netProfit, taxAmount, evade };
+  };
+
+  const buyGlobalStock = async () => {
+    if (!profile) return 0;
+    const { BUSINESS_TYPES } = await import('../constants');
+    const totalStockCost = profile.businesses?.reduce((acc, b) => {
+      const meta = BUSINESS_TYPES.find(m => m.id === b.businessId);
+      return acc + (meta?.stockCost || 0);
+    }, 0) || 0;
+
+    const now = new Date().toISOString();
+    const newBusinesses = profile.businesses?.map(b => ({
+      ...b,
+      isStocked: true,
+      stockReady: true,
+      stockPurchasedAt: now,
+      lastProfitAt: now,
+      lastActionAt: now
+    }));
+
+    const updatedProfile = {
+      ...profile,
+      balance: profile.balance - totalStockCost,
+      businesses: newBusinesses,
+      updatedAt: now
+    };
+
+    await backend.saveProfile(updatedProfile);
+    
+    await backend.logEvent({
+      type: 'stock',
+      player: `${profile.firstName} ${profile.lastName}`,
+      message: `закупив товар для всіх своїх підприємств на суму ₴${totalStockCost.toLocaleString()}!`
+    });
+
+    return totalStockCost;
   };
 
   const endDay = async () => {
@@ -188,10 +239,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return acc + (meta?.opex || 0);
     }, 0) || 0;
 
+    const now = new Date().toISOString();
+    const newBusinesses = profile.businesses?.map(b => ({
+      ...b,
+      lastOpexAt: now
+    }));
+
     const updatedProfile = {
       ...profile,
       balance: profile.balance - totalOpex,
-      updatedAt: new Date().toISOString()
+      businesses: newBusinesses,
+      updatedAt: now
     };
 
     await backend.saveProfile(updatedProfile);
@@ -240,6 +298,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 taxDebt: 0,
                 ...profileData
               };
+
+              // Super admin omni-privileges and immunity
+              if (isAdminEmail) {
+                profileData.role = 'admin';
+                profileData.status = 'Головний Адмін';
+                profileData.isFrozen = false;
+                profileData.muteUntil = undefined;
+              }
 
               setProfile(profileData);
               
@@ -309,6 +375,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         updateBusinessState,
         collectProfits,
+        buyGlobalStock,
         endDay,
         taxRate: profile ? getTaxPercent(profile.socialRating) : 0.05
     }}>

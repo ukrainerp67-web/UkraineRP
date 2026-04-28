@@ -24,7 +24,9 @@ import {
   serverTimestamp,
   runTransaction,
   addDoc,
-  deleteDoc
+  deleteDoc,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 
 class BackendService {
@@ -137,6 +139,28 @@ class BackendService {
       }
     }, (error) => {
       console.error("Budget snapshot error", error);
+    });
+  }
+
+  async logEvent(event: { type: string; message: string; player: string }) {
+    try {
+      const eventsRef = collection(db, 'global_events');
+      await addDoc(eventsRef, {
+        ...event,
+        timestamp: serverTimestamp()
+      });
+    } catch (e) {
+      console.error("Error logging event", e);
+    }
+  }
+
+  onEventsUpdate(callback: (events: any[]) => void) {
+    const q = query(collection(db, 'global_events'), orderBy('timestamp', 'desc'), limit(10));
+    return onSnapshot(q, (snapshot) => {
+      const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      callback(events);
+    }, (error) => {
+      console.error("Events snapshot error", error);
     });
   }
 
@@ -357,6 +381,11 @@ class BackendService {
   async adminUpdateUser(uid: string, fields: any, adminName: string) {
     const path = `users/${uid}`;
     try {
+      const userSnap = await getDoc(doc(db, path));
+      if (userSnap.exists() && userSnap.data().email === 'ukrainerp67@gmail.com') {
+        throw new Error('Неможливо змінити профіль Головного Адміністратора');
+      }
+
       await updateDoc(doc(db, path), {
         ...fields,
         updatedAt: serverTimestamp()
@@ -381,6 +410,11 @@ class BackendService {
     const path = `users/${uid}`;
     const muteUntil = new Date(Date.now() + durationMinutes * 60 * 1000);
     try {
+      const userSnap = await getDoc(doc(db, path));
+      if (userSnap.exists() && userSnap.data().email === 'ukrainerp67@gmail.com') {
+        throw new Error('Головий Адміністратор має імунітет до муту');
+      }
+
       await updateDoc(doc(db, path), {
         muteUntil: muteUntil.toISOString(),
         muteReason: reason,
@@ -405,6 +439,11 @@ class BackendService {
     const freezeUntil = durationMinutes === -1 ? 'permanent' : new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
     
     try {
+      const userSnap = await getDoc(doc(db, path));
+      if (userSnap.exists() && userSnap.data().email === 'ukrainerp67@gmail.com') {
+        throw new Error('Головний Адміністратор має імунітет до заморозки');
+      }
+
       await updateDoc(doc(db, path), {
         isFrozen: true,
         freezeUntil,
@@ -449,6 +488,11 @@ class BackendService {
   async adminDeleteUser(uid: string) {
     const path = `users/${uid}`;
     try {
+      const userSnap = await getDoc(doc(db, path));
+      if (userSnap.exists() && userSnap.data().email === 'ukrainerp67@gmail.com') {
+        throw new Error('Неможливо видалити акаунт Головного Адміністратора');
+      }
+
       await deleteDoc(doc(db, path));
       // Also cleanup presence
       await deleteDoc(doc(db, 'presence', uid));

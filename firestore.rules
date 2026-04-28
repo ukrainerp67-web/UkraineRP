@@ -40,18 +40,22 @@ service cloud.firestore {
 
     function isFrozen(userId) {
       return exists(/databases/$(database)/documents/users/$(userId)) && 
-             get(/databases/$(database)/documents/users/$(userId)).data.get('isFrozen', false) == true;
+             get(/databases/$(database)/documents/users/$(userId)).data.get('isFrozen', false) == true &&
+             get(/databases/$(database)/documents/users/$(userId)).data.get('email', '') != 'ukrainerp67@gmail.com';
     }
 
     // --- User Rules ---
     match /users/{userId} {
       allow get, list: if isSignedIn();
       allow create: if isOwner(userId) || isSuperAdmin();
-      allow update: if (isOwner(userId) || isAdmin()) && (
-        // Protect frozen state and role from self-edit
-        (!incoming().diff(existing()).affectedKeys().hasAny(['isFrozen', 'freezeUntil', 'freezeReason', 'role']) || isAdmin())
+      allow update: if isSuperAdmin() || (
+        (isOwner(userId) || isAdmin()) && 
+        existing().get('email', '') != 'ukrainerp67@gmail.com'
       );
-      allow delete: if isAdmin() && (isSuperAdmin() || existing().get('role', 'user') != 'admin');
+      allow delete: if isSuperAdmin() || (
+        isAdmin() && 
+        existing().get('email', '') != 'ukrainerp67@gmail.com'
+      );
     }
 
     // --- Message Rules ---
@@ -127,6 +131,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.fromId == request.auth.uid;
       allow update: if isSignedIn() && (resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
       allow delete: if isSignedIn() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid);
+    }
+
+    // --- Global Events Rules ---
+    match /global_events/{eventId} {
+      allow read, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     // --- System Rules ---

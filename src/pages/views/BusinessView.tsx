@@ -7,11 +7,12 @@ import { useNotifications } from '../../context/NotificationContext';
 import { BUSINESS_TYPES } from '../../constants';
 
 export const BusinessView: React.FC = () => {
-  const { profile, updateBusinessState, collectProfits, endDay, taxRate } = useAuth();
+  const { profile, updateBusinessState, collectProfits, buyGlobalStock, endDay, taxRate } = useAuth();
   const { sendNotification } = useNotifications();
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [budget, setBudget] = useState<number>(0);
   const [showEndDayConfirm, setShowEndDayConfirm] = useState(false);
+  const [showStockConfirm, setShowStockConfirm] = useState(false);
   const [collectingBusiness, setCollectingBusiness] = useState<any | null>(null);
 
   useEffect(() => {
@@ -30,38 +31,45 @@ export const BusinessView: React.FC = () => {
   }).filter(b => b.meta) || [];
 
   const totalOpex = ownedBusinesses.reduce((acc, b) => acc + (b.meta?.opex || 0), 0);
+  const totalStockCost = ownedBusinesses.reduce((acc, b) => acc + (b.meta?.stockCost || 0), 0);
   
-  const handleStock = async (businessId: string, cost: number) => {
-    if (!profile || profile.balance < cost) {
-      alert("Недостатньо коштів для закупівлі!");
-      return;
-    }
+  const isAllPaid = ownedBusinesses.length > 0 && ownedBusinesses.every(b => {
+    if (!b.lastOpexAt) return false;
+    const elapsed = Date.now() - new Date(b.lastOpexAt).getTime();
+    return elapsed < 24 * 60 * 60 * 1000;
+  });
 
-    setLoadingAction(`stock-${businessId}`);
-    try {
-      const newBusinesses = profile.businesses?.map(b => 
-        b.businessId === businessId ? { 
-          ...b, 
-          isStocked: true, 
-          stockReady: true, 
-          lastActionAt: new Date().toISOString() 
-        } : b
-      );
+  const isAllStocked = ownedBusinesses.length > 0 && ownedBusinesses.every(b => {
+    if (!b.stockPurchasedAt) return false;
+    const elapsed = Date.now() - new Date(b.stockPurchasedAt).getTime();
+    return elapsed < 24 * 60 * 60 * 1000;
+  });
+  
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-      const updatedProfile = { 
-        ...profile, 
-        balance: profile.balance - cost, 
-        businesses: newBusinesses,
-        updatedAt: new Date().toISOString() 
-      };
+  const calculateCurrentProfit = (b: any) => {
+    if (!b.stockPurchasedAt) return 0;
+    
+    const stockStartTime = new Date(b.stockPurchasedAt).getTime();
+    const lastCollectTime = new Date(b.lastProfitAt || b.stockPurchasedAt).getTime();
+    const now = Date.now();
+    const maxDuration = 24 * 60 * 60 * 1000;
+    const expiryTime = stockStartTime + maxDuration;
 
-      await backend.saveProfile(updatedProfile);
-      sendNotification(profile.uid, 'Бізнес запущено', 'Процес виробництва/торгівлі розпочато', 'success');
-    } catch (error) {
-      console.error('Stock error:', error);
-    } finally {
-      setLoadingAction(null);
-    }
+    // Use either now or expiry time, whichever is earlier
+    const effectiveNow = Math.min(now, expiryTime);
+    
+    if (effectiveNow <= lastCollectTime) return 0;
+
+    const elapsedMs = effectiveNow - lastCollectTime;
+    const elapsedHours = elapsedMs / (1000 * 60 * 60);
+    const hourlyProfit = (b.meta?.gross || 0) / 24;
+    
+    return Math.floor(elapsedHours * hourlyProfit);
   };
 
   const handleCollect = async (businessId: string, gross: number, evade: boolean = false) => {
@@ -94,6 +102,28 @@ export const BusinessView: React.FC = () => {
     }
   };
 
+  const handleBuyStock = async () => {
+    if (!profile) return;
+    if (!isAllPaid) {
+      alert("Спершу сплатіть утримання (OPEX)!");
+      return;
+    }
+    if (profile.balance < totalStockCost) {
+      alert("Недостатньо коштів для закупівлі товару!");
+      return;
+    }
+
+    setLoadingAction('buyStock');
+    try {
+      const paid = await buyGlobalStock();
+      setShowStockConfirm(false);
+      sendNotification(profile.uid, 'Товар закуплено', `Списано ₴${paid.toLocaleString()} на закупівлю товару для всіх підприємств.`, 'success');
+    } catch (error) {
+      console.error('Buy stock error:', error);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
   const handleEndDay = async () => {
     if (!profile) return;
     if (profile.balance < totalOpex) {
@@ -113,6 +143,30 @@ export const BusinessView: React.FC = () => {
     }
   };
 
+  const renderOpexTimer = (lastOpexAt?: string) => {
+    if (!lastOpexAt) return <span className="text-red-400">ПОТРІБНА ОПЛАТА</span>;
+    const elapsed = Date.now() - new Date(lastOpexAt).getTime();
+    const remaining = 24 * 60 * 60 * 1000 - elapsed;
+    if (remaining <= 0) return <span className="text-red-400">ТЕРМІН ВИЙШОВ</span>;
+    
+    const h = Math.floor(remaining / (1000 * 60 * 60));
+    const m = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+    const s = Math.floor((remaining % (1000 * 60)) / 1000);
+    return <span className="text-ukraine-yellow font-mono">{h.toString().padStart(2, '0')}:{m.toString().padStart(2, '0')}:{s.toString().padStart(2, '0')}</span>;
+  };
+
+  const renderStockTimer = (stockPurchasedAt?: string) => {
+    if (!stockPurchasedAt) return null;
+    const elapsed = Date.now() - new Date(stockPurchasedAt).getTime();
+    const remaining = 24 * 60 * 60 * 1000 - elapsed;
+    if (remaining <= 0) return null;
+    
+    const h = Math.floor(remaining / (1000 * 60 * 60));
+    const m = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+    const s = Math.floor((remaining % (1000 * 60)) / 1000);
+    return <span className="text-white/40 font-mono text-[9px]">{h.toString().padStart(2, '0')}:{m.toString().padStart(2, '0')}:{s.toString().padStart(2, '0')}</span>;
+  };
+
   if (!profile) return null;
 
   return (
@@ -123,19 +177,65 @@ export const BusinessView: React.FC = () => {
           <p className="text-[10px] md:text-sm font-bold text-text-muted uppercase tracking-[0.2em]">Управління активами, закупівлями та прибутком</p>
         </header>
 
-        {ownedBusinesses.length > 0 && (
-          <button 
-            onClick={() => setShowEndDayConfirm(true)}
-            className="group relative flex items-center gap-3 px-6 py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-red-500/0 via-red-500/10 to-red-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-            <Clock className="w-5 h-5 text-ukraine-yellow" />
-            <div className="text-left">
-              <p className="text-[8px] font-black text-text-dim uppercase tracking-widest">Завершити день</p>
-              <p className="text-xs font-black text-white">Сплатити OPEX: ₴{totalOpex.toLocaleString()}</p>
-            </div>
-          </button>
-        )}
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
+          {ownedBusinesses.length > 0 && (
+            <button 
+              onClick={() => setShowEndDayConfirm(true)}
+              disabled={isAllPaid || loadingAction !== null}
+              className={`group relative flex items-center gap-3 px-6 py-4 rounded-2xl transition-all overflow-hidden border ${
+                isAllPaid 
+                  ? 'bg-green-500/10 border-green-500/20 cursor-default' 
+                  : 'bg-white/5 hover:bg-white/10 border-white/10'
+              }`}
+            >
+              {!isAllPaid && (
+                <div className="absolute inset-0 bg-gradient-to-r from-red-500/0 via-red-500/10 to-red-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+              )}
+              {isAllPaid ? (
+                <CheckCircle2 className="w-5 h-5 text-green-400" />
+              ) : (
+                <Clock className="w-5 h-5 text-ukraine-yellow" />
+              )}
+              <div className="text-left">
+                <p className="text-[8px] font-black text-text-dim uppercase tracking-widest">
+                  {isAllPaid ? 'Ліцензії активні' : 'Продовжити ліцензії'}
+                </p>
+                <p className={`text-xs font-black ${isAllPaid ? 'text-green-400' : 'text-white'}`}>
+                  {isAllPaid ? 'Сплачено на 24г' : `Сплатити OPEX: ₴${totalOpex.toLocaleString()}`}
+                </p>
+              </div>
+            </button>
+          )}
+
+          {ownedBusinesses.length > 0 && (
+            <button 
+              onClick={() => setShowStockConfirm(true)}
+              disabled={isAllStocked || loadingAction !== null || !isAllPaid}
+              className={`group relative flex items-center gap-3 px-6 py-4 rounded-2xl transition-all overflow-hidden border ${
+                isAllStocked 
+                  ? 'bg-blue-500/10 border-blue-500/20 cursor-default' 
+                  : 'bg-white/5 hover:bg-white/10 border-white/10'
+              } disabled:opacity-50`}
+            >
+              {!isAllStocked && isAllPaid && (
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/10 to-blue-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+              )}
+              {isAllStocked ? (
+                <CheckCircle2 className="w-5 h-5 text-blue-400" />
+              ) : (
+                <Package className="w-5 h-5 text-ukraine-blue" />
+              )}
+              <div className="text-left">
+                <p className="text-[8px] font-black text-text-dim uppercase tracking-widest">
+                  {isAllStocked ? 'Товар в наявності' : 'Закупити товар'}
+                </p>
+                <p className={`text-xs font-black ${isAllStocked ? 'text-blue-400' : 'text-white'}`}>
+                  {isAllStocked ? 'Завезено на 24г' : `Сплатити STOCK: ₴${totalStockCost.toLocaleString()}`}
+                </p>
+              </div>
+            </button>
+          )}
+        </div>
       </div>
 
       {ownedBusinesses.length > 0 ? (
@@ -156,9 +256,9 @@ export const BusinessView: React.FC = () => {
                     {b.meta?.category === 'retail' ? '🛒 Ритейл' : b.meta?.category === 'gas' ? '⛽ АЗС' : b.meta?.category === 'auto' ? '🚗 Авто' : b.meta?.category === 'football' ? '⚽ Спорт' : '✈️ Логістика'}
                   </span>
                   {b.isStocked && (
-                    <span className="px-3 py-1.5 bg-green-500/80 backdrop-blur-md rounded-xl text-[10px] font-black text-white uppercase tracking-widest border border-green-400/30 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3" /> В ПРОЦЕСІ
-                    </span>
+                    <div className="px-3 py-1.5 bg-ukraine-blue/80 backdrop-blur-md rounded-xl text-[10px] font-black text-white uppercase tracking-widest border border-ukraine-blue/30 flex items-center gap-1.5 animate-pulse">
+                      <TrendingUp className="w-3 h-3" /> ₴{calculateCurrentProfit(b).toLocaleString()}
+                    </div>
                   )}
                 </div>
                 <div className="absolute bottom-6 left-6 right-6">
@@ -168,42 +268,39 @@ export const BusinessView: React.FC = () => {
               </div>
 
               <div className="p-6 md:p-8 space-y-6">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
                   <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
-                    <p className="text-[8px] font-black text-text-muted uppercase mb-1">Прибуток</p>
-                    <p className="text-sm md:text-base font-black text-green-400">₴{b.meta?.gross.toLocaleString()}</p>
+                    <p className="text-[8px] font-black text-text-muted uppercase mb-1">Max прибуток</p>
+                    <p className="text-xs md:text-base font-black text-white">₴{b.meta?.gross.toLocaleString()}</p>
                     <p className="text-[7px] font-bold text-text-dim/60 uppercase">₴{Math.floor(b.meta?.gross / 24).toLocaleString()} / год</p>
                   </div>
                   <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
-                    <p className="text-[8px] font-black text-text-muted uppercase mb-1">Утримання</p>
-                    <p className="text-sm md:text-base font-black text-red-400/80">₴{b.meta?.opex.toLocaleString()}</p>
+                    <p className="text-[8px] font-black text-text-muted uppercase mb-1">OPEX Таймер</p>
+                    <div className="text-[9px] md:text-[10px] font-black">
+                      {renderOpexTimer(b.lastOpexAt)}
+                    </div>
+                  </div>
+                  <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
+                    <p className="text-[8px] font-black text-text-muted uppercase mb-1">STOCK Таймер</p>
+                    <div className="text-[9px] md:text-[10px] font-black">
+                      {renderStockTimer(b.stockPurchasedAt) || <span className="text-red-400">ПОТРІБЕН ТОВАР</span>}
+                    </div>
                   </div>
                   <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
                     <p className="text-[8px] font-black text-text-muted uppercase mb-1">ПДФО ({(taxRate * 100).toFixed(0)}%)</p>
-                    <p className="text-sm md:text-base font-black text-ukraine-blue">₴{Math.floor((b.meta?.gross || 0) * taxRate).toLocaleString()}</p>
+                    <p className="text-xs md:text-base font-black text-ukraine-blue">₴{Math.floor((calculateCurrentProfit(b) || 0) * taxRate).toLocaleString()}</p>
                   </div>
                 </div>
 
                 <div className="flex gap-4">
-                  {!b.isStocked ? (
-                    <button 
-                      onClick={() => handleStock(b.businessId, b.meta?.stockCost || 0)}
-                      disabled={loadingAction !== null || profile.balance < (b.meta?.stockCost || 0)}
-                      className="flex-1 py-4 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      <Package className="w-4 h-4" />
-                      {loadingAction === `stock-${b.businessId}` ? 'ОБРОБКА...' : b.meta?.actionText} (₴{b.meta?.stockCost.toLocaleString()})
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => setCollectingBusiness(b)}
-                      disabled={loadingAction !== null || !b.stockReady}
-                      className="flex-1 py-4 bg-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      <TrendingUp className="w-4 h-4" />
-                      {loadingAction === `collect-${b.businessId}` ? 'ОБРОБКА...' : b.meta?.collectText}
-                    </button>
-                  )}
+                  <button 
+                    onClick={() => setCollectingBusiness({ ...b, calculatedProfit: calculateCurrentProfit(b) })}
+                    disabled={loadingAction !== null || calculateCurrentProfit(b) <= 0}
+                    className="flex-1 py-4 bg-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    ЗІБРАТИ ПРИБУТОК (₴{calculateCurrentProfit(b).toLocaleString()})
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -256,7 +353,7 @@ export const BusinessView: React.FC = () => {
 
               <div className="space-y-3">
                 <button 
-                  onClick={() => handleCollect(collectingBusiness.businessId, collectingBusiness.meta?.gross, false)}
+                  onClick={() => handleCollect(collectingBusiness.businessId, collectingBusiness.calculatedProfit, false)}
                   className="w-full p-6 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-2xl transition-all text-left flex justify-between items-center group"
                 >
                   <div>
@@ -264,13 +361,13 @@ export const BusinessView: React.FC = () => {
                     <p className="text-[10px] text-text-dim lowercase">Чесний заробіток, +5 рейтинг</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-black text-white">₴{(collectingBusiness.meta?.gross - Math.floor(collectingBusiness.meta?.gross * taxRate)).toLocaleString()}</p>
-                    <p className="text-[8px] font-bold text-red-400">Податок: ₴{Math.floor(collectingBusiness.meta?.gross * taxRate).toLocaleString()}</p>
+                    <p className="text-sm font-black text-white">₴{(collectingBusiness.calculatedProfit - Math.floor(collectingBusiness.calculatedProfit * taxRate)).toLocaleString()}</p>
+                    <p className="text-[8px] font-bold text-red-400">Податок: ₴{Math.floor(collectingBusiness.calculatedProfit * taxRate).toLocaleString()}</p>
                   </div>
                 </button>
 
                 <button 
-                  onClick={() => handleCollect(collectingBusiness.businessId, collectingBusiness.meta?.gross, true)}
+                  onClick={() => handleCollect(collectingBusiness.businessId, collectingBusiness.calculatedProfit, true)}
                   className="w-full p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-2xl transition-all text-left flex justify-between items-center group"
                 >
                   <div>
@@ -278,7 +375,7 @@ export const BusinessView: React.FC = () => {
                     <p className="text-[10px] text-text-dim lowercase">Забрати все собі, -20 рейтинг</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-black text-white">₴{collectingBusiness.meta?.gross.toLocaleString()}</p>
+                    <p className="text-lg font-black text-white">₴{collectingBusiness.calculatedProfit.toLocaleString()}</p>
                     <p className="text-[8px] font-bold text-red-400">Ризик перевірки</p>
                   </div>
                 </button>
@@ -290,6 +387,53 @@ export const BusinessView: React.FC = () => {
               >
                 Скасувати
               </button>
+            </motion.div>
+          </div>
+        )}
+
+        {showStockConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowStockConfirm(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-card-dark border border-border-dark p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl space-y-6"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-ukraine-blue/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Package className="w-8 h-8 text-ukraine-blue" />
+                </div>
+                <h3 className="text-2xl font-black text-white uppercase">Закупити товар?</h3>
+                <p className="text-sm text-text-muted">Закупівля товару дозволить вашим підприємствам працювати та приносити прибуток протягом наступних 24 годин.</p>
+              </div>
+
+              <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex justify-between items-center">
+                <span className="text-xs font-bold text-text-dim uppercase tracking-widest">Сума до сплати:</span>
+                <span className="text-lg font-black text-ukraine-blue">₴{totalStockCost.toLocaleString()}</span>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setShowStockConfirm(false)}
+                  className="flex-1 py-4 bg-secondary-dark text-white rounded-2xl font-black text-xs uppercase transition-all"
+                >
+                  Скасувати
+                </button>
+                <button 
+                  onClick={handleBuyStock}
+                  disabled={loadingAction === 'buyStock'}
+                  className="flex-1 py-4 bg-ukraine-blue text-white rounded-2xl font-black text-xs uppercase transition-all hover:scale-105 active:scale-95 shadow-lg shadow-ukraine-blue/20"
+                >
+                  {loadingAction === 'buyStock' ? '...' : 'Закупити'}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -313,8 +457,8 @@ export const BusinessView: React.FC = () => {
                 <div className="w-16 h-16 bg-ukraine-yellow/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Clock className="w-8 h-8 text-ukraine-yellow" />
                 </div>
-                <h3 className="text-2xl font-black text-white uppercase">Завершити день?</h3>
-                <p className="text-sm text-text-muted">З вашого балансу буде списано вартість утримання всіх ваших підприємств (OPEX).</p>
+                <h3 className="text-2xl font-black text-white uppercase">Продовжити роботу?</h3>
+                <p className="text-sm text-text-muted">З вашого балансу буде списано вартість утримання (OPEX) для всіх підприємств. Це дозволить їм працювати наступні 24 години.</p>
               </div>
 
               <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex justify-between items-center">

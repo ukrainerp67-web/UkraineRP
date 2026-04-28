@@ -17,6 +17,27 @@ export const ProfileView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'friends' | 'chat'>('info');
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [offlineEarnings, setOfflineEarnings] = useState(0);
+
+  useEffect(() => {
+    // Welcome back logic
+    if (profile && profile.businesses?.length && !showWelcome) {
+      const totalEarned = profile.businesses.reduce((acc, b) => {
+        if (!b.isStocked || !b.stockPurchasedAt) return acc;
+        const elapsedMs = Date.now() - new Date(b.stockPurchasedAt).getTime();
+        const elapsedHours = elapsedMs / (1000 * 60 * 60);
+        const hourlyProfit = (b.meta?.gross || 0) / 24;
+        const earned = Math.min(b.meta?.gross || 0, Math.floor(elapsedHours * hourlyProfit));
+        return acc + earned;
+      }, 0);
+      
+      if (totalEarned > 100) {
+        setOfflineEarnings(totalEarned);
+        setShowWelcome(true);
+      }
+    }
+  }, [profile?.uid]);
   const [loading, setLoading] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<any>(null);
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -329,6 +350,54 @@ export const ProfileView: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Welcome Back Modal Integration */}
+            <AnimatePresence>
+              {showWelcome && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black/90 backdrop-blur-md"
+                    onClick={() => setShowWelcome(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                    className="relative w-full max-w-sm bg-card-dark border border-blue-500/30 rounded-[2.5rem] p-8 shadow-2xl shadow-blue-500/20 text-center overflow-hidden"
+                  >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-ukraine-blue via-ukraine-yellow to-ukraine-blue" />
+                    
+                    <div className="w-20 h-20 bg-ukraine-blue/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-ukraine-blue/20">
+                      <TrendingUp className="w-10 h-10 text-ukraine-blue animate-bounce" />
+                    </div>
+
+                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">З поверненням!</h2>
+                    <p className="text-text-muted text-xs font-bold uppercase tracking-widest mb-6">Гра продовжувалась, поки вас не було</p>
+
+                    <div className="bg-white/5 rounded-3xl p-6 border border-white/5 mb-8">
+                      <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-2">Нараховано прибутку</p>
+                      <h4 className="text-3xl font-black text-green-400">₴{offlineEarnings.toLocaleString()}</h4>
+                      <div className="flex items-center justify-center gap-2 mt-3">
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                        <span className="text-[9px] font-black text-green-500/80 uppercase tracking-widest">Пасивний дохід активовано</span>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => setShowWelcome(false)}
+                      className="w-full py-4 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/10"
+                    >
+                      ПРОДОВЖИТИ ГРУ
+                    </button>
+                    
+                    <p className="text-[8px] text-text-dim font-bold uppercase mt-6 tracking-widest">Система розрахувала прибуток на основі часу вашої відсутності</p>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 

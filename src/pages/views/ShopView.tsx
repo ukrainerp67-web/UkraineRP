@@ -61,6 +61,14 @@ export const ShopView: React.FC = () => {
       };
 
       await backend.saveProfile(updatedProfile);
+      
+      // Log global event
+      await backend.logEvent({
+        type: 'purchase',
+        player: `${profile.firstName} ${profile.lastName}`,
+        message: `придбав підприємство "${business.name}" за ₴${business.price.toLocaleString()} та став справжнім бізнесменом!`
+      });
+
       await refreshProfile();
 
       await sendNotification(

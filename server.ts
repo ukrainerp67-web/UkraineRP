@@ -20,12 +20,12 @@ const io = new Server(httpServer, {
 });
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const DATA_DIR = path.join(__dirname, "data");
+const DATA_DIR = path.join(process.cwd(), "data");
 const JWT_SECRET = process.env.JWT_SECRET || "ukraine-rp-secret-key-123";
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR);
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
 app.use(cors());

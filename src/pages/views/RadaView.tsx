@@ -12,8 +12,11 @@ export const RadaView: React.FC = () => {
 
   const isGovLeader = profile?.role === 'Президент' || 
                       profile?.role === "Прем'єр Міністр" || 
+                      profile?.role === "Прем'єр міністр" || 
+                      profile?.role === "Прем'єр-міністр" || 
                       profile?.role === 'Міністр фінансів' ||
-                      profile?.role === 'admin';
+                      profile?.role === 'admin' ||
+                      profile?.role === 'rada';
 
   const isInGov = isGovLeader || 
                   profile?.role === 'Депутат' || 

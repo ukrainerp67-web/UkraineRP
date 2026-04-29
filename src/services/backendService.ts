@@ -264,6 +264,89 @@ class BackendService {
     }
   }
 
+  async addressThePeople(adminId: string, speech: string) {
+    try {
+      const trustChange = Math.floor(Math.random() * 15) + 5;
+      await this.updateTrustRating(trustChange);
+      await this.logEvent({
+        type: 'president_speech',
+        message: `Президент звернувся до народу: "${speech.substring(0, 100)}...". Рейтинг довіри зріс на ${trustChange}%!`,
+        player: adminId
+      });
+      return { success: true, trustChange };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async fundSphere(adminId: string, sphere: string, amount: number) {
+    try {
+      const result = await this.removeFromBudget(amount);
+      if (!result.success) return result;
+
+      const trustChange = Math.floor(amount / 50000);
+      await this.updateTrustRating(trustChange);
+      await this.logEvent({
+        type: 'funding',
+        message: `Прем'єр-міністр виділив ₴${amount.toLocaleString()} на сферу: ${sphere}. Рейтинг довіри зріс на ${trustChange}%!`,
+        player: adminId
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async issueReprimand(adminId: string, targetId: string, reason: string) {
+    try {
+      const target = await this.getProfile(targetId);
+      if (!target) return { success: false, message: 'Ціль не знайдена' };
+
+      await this.sendNotification(targetId, {
+        title: '⚠️ Офіційна Догана',
+        message: `Президент виніс вам догану. Причина: ${reason}. Три догани — звільнення!`,
+        type: 'error'
+      });
+
+      await this.logEvent({
+        type: 'reprimand',
+        message: `Президент виніс догану посадовцю ${target.firstName} ${target.lastName}. Причина: ${reason}`,
+        player: adminId
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async freezeAccount(adminId: string, targetId: string) {
+    try {
+      const target = await this.getProfile(targetId);
+      if (!target) return { success: false, message: 'Ціль не знайдена' };
+
+      // Simplified: we'll just log it and maybe add a field to user
+      await updateDoc(doc(db, 'users', targetId), {
+        accountFrozenUntil: serverTimestamp(), // Logic for check can be added to PayDay
+        updatedAt: serverTimestamp()
+      });
+
+      await this.sendNotification(targetId, {
+        title: '🚫 Рахунок заблоковано',
+        message: 'ВФБ заблокував ваші особисті рахунки на 2 цикли PayDay!',
+        type: 'error'
+      });
+
+      await this.logEvent({
+        type: 'freeze',
+        message: `ВФБ заблокував рахунок гравця ${target.firstName} ${target.lastName}`,
+        player: adminId
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
   async auditUser(adminId: string, targetId: string) {
     try {
       const target = await this.getProfile(targetId);

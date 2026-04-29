@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
-import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle } from 'lucide-react';
+import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle, ShieldAlert, TrendingUp, HandCoins, UserSearch, Ban, FileWarning, Wallet, Lock } from 'lucide-react';
 import { backend } from '../../services/backendService';
+import { collection, query, getDocs, limit } from 'firebase/firestore';
+import { db } from '../../firebase';
 
 export const RadaView: React.FC = () => {
   const { profile } = useAuth();
   const [countryState, setCountryState] = useState<any>(null);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [supportAmount, setSupportAmount] = useState(1000);
   
-  useEffect(() => {
-    const unsubscribe = backend.onGlobalStateUpdate((state) => {
-      setCountryState(state);
-    });
-    return () => unsubscribe();
-  }, []);
-
   const isSuperAdmin = profile?.email === 'ukrainerp67@gmail.com';
   const canJoin = isSuperAdmin || (profile && profile.socialRating >= 15);
 
@@ -30,8 +27,89 @@ export const RadaView: React.FC = () => {
                   profile?.role === 'Депутат' || 
                   profile?.role === 'Працівник ВФБ';
 
-  const [supportAmount, setSupportAmount] = useState(1000);
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<string>('');
+  const [taxInput, setTaxInput] = useState<string>('20');
+  const [speech, setSpeech] = useState<string>('');
+  const [bonusReason, setBonusReason] = useState<string>('');
+  const [bonusAmount, setBonusAmount] = useState<string>('1000');
+  const [fundAmount, setFundAmount] = useState<string>('50000');
+  const [fundSphere, setFundSphere] = useState<string>('Медицина');
+
+  useEffect(() => {
+    const unsubscribe = backend.onGlobalStateUpdate((state) => {
+      setCountryState(state);
+      if (state && state.taxRate !== undefined) {
+          setTaxInput((state.taxRate * 100).toFixed(0));
+      }
+    });
+
+    const fetchPlayers = async () => {
+       try {
+         const usersRef = collection(db, 'users');
+         const q = query(usersRef, limit(20));
+         const snapshot = await getDocs(q);
+         const playersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+         setPlayers(playersList);
+       } catch (err) {
+         console.error("Error fetching players", err);
+       }
+    };
+    fetchPlayers();
+
+    return () => unsubscribe();
+  }, []);
+
+  const handlePresidentVeto = async () => {
+    if (!profile) return;
+    setLoadingAction('veto');
+    await backend.applyVeto(profile.uid, 'Остання зміна бюджету');
+    setLoadingAction(null);
+  };
+
+  const handlePresidentSpeech = async () => {
+    if (!profile || !speech) return;
+    setLoadingAction('speech');
+    await backend.addressThePeople(profile.uid, speech);
+    setSpeech('');
+    setLoadingAction(null);
+  };
+
+  const handleTaxChange = async () => {
+    if (!profile) return;
+    setLoadingAction('tax');
+    await backend.setTaxRate(profile.uid, parseInt(taxInput) / 100);
+    setLoadingAction(null);
+  };
+
+  const handleRaid = async () => {
+    if (!profile) return;
+    setLoadingAction('raid');
+    await backend.businessRaid(profile.uid);
+    setLoadingAction(null);
+  };
+
+  const handleAudit = async () => {
+    if (!profile || !selectedPlayer) return;
+    setLoadingAction('audit');
+    await backend.auditUser(profile.uid, selectedPlayer);
+    setLoadingAction(null);
+  };
+
+  const handleBonus = async () => {
+    if (!profile || !selectedPlayer || !bonusReason) return;
+    setLoadingAction('bonus');
+    await backend.applyBonusOrPenalty(profile.uid, selectedPlayer, parseInt(bonusAmount), bonusReason);
+    setBonusReason('');
+    setLoadingAction(null);
+  };
+
+  const handleFund = async () => {
+    if (!profile || !fundAmount) return;
+    setLoadingAction('fund');
+    await backend.fundSphere(profile.uid, fundSphere, parseInt(fundAmount));
+    setLoadingAction(null);
+  };
 
   const handleDistribute = async (type: 'support' | 'pension') => {
     if (!profile) return;
@@ -101,26 +179,263 @@ export const RadaView: React.FC = () => {
         <Building2 className="absolute -bottom-8 -right-8 w-32 md:w-48 h-32 md:h-48 text-blue-400/5 rotate-12 pointer-events-none" />
       </header>
 
-      {/* Global State & Role Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <div className="lg:col-span-1 bg-white/5 border border-white/10 p-5 rounded-2xl backdrop-blur-md">
-          <h3 className="text-sm font-black text-blue-400 uppercase tracking-widest mb-3">📋 Роль посадовця</h3>
-          <div className="space-y-3 text-[11px] text-text-dim leading-relaxed">
-            <p><span className="text-white font-bold">Президент:</span> Вето на рішення, звернення до народу, догани посадовцям.</p>
-            <p><span className="text-white font-bold">Прем'єр:</span> Розподіл бюджету, фінансування сфер, урядові доручення.</p>
-            <p><span className="text-white font-bold">Мінфін:</span> Контроль казни, зміна податків, премії та штрафи.</p>
-            <p><span className="text-white font-bold">ВФБ:</span> Антикорупційні аудити, арешт рахунків, судові позови.</p>
-            <p><span className="text-white font-bold">Податківець:</span> Рейди на бізнес, наповнення бюджету, корупційні ризики.</p>
+      {/* Dynamics Role Panel */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Left Column: Role Interaction */}
+        <div className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/10 rounded-lg">
+              <ShieldAlert className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-white uppercase tracking-wider">Панель Управління Посадою</h3>
+              <p className="text-[10px] text-text-dim uppercase tracking-widest">{profile?.role}</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {profile?.role === 'Президент' && (
+              <div className="space-y-4">
+                <button 
+                  onClick={handlePresidentVeto}
+                  disabled={loadingAction === 'veto'}
+                  className="w-full flex items-center justify-between p-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-2xl transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Ban className="w-5 h-5 text-red-400" />
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-white uppercase">Накласти ВЕТО</p>
+                      <p className="text-[9px] text-text-dim">Скасувати останнє рішення уряду</p>
+                    </div>
+                  </div>
+                  <Gavel className="w-4 h-4 text-red-400 opacity-50 group-hover:opacity-100 transition-opacity" />
+                </button>
+
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="w-4 h-4 text-blue-400" />
+                    <p className="text-[10px] font-bold text-white uppercase">Звернення до народу</p>
+                  </div>
+                  <textarea 
+                    value={speech}
+                    onChange={(e) => setSpeech(e.target.value)}
+                    placeholder="Ваша промова..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-blue-500/50 min-h-[80px]"
+                  />
+                  <button 
+                    onClick={handlePresidentSpeech}
+                    disabled={loadingAction === 'speech' || !speech}
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+                  >
+                    Виступити {loadingAction === 'speech' && '...'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {profile?.role === "Прем'єр-міністр" && (
+              <div className="space-y-4">
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <HandCoins className="w-4 h-4 text-yellow-400" />
+                    <p className="text-[10px] font-bold text-white uppercase">Фінансування сфер</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <select 
+                      value={fundSphere}
+                      onChange={(e) => setFundSphere(e.target.value)}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                    >
+                      <option value="Медицина">Медицина</option>
+                      <option value="Оборона">Оборона</option>
+                      <option value="Освіта">Освіта</option>
+                      <option value="Інфраструктура">Інфраструктура</option>
+                    </select>
+                    <input 
+                      type="number"
+                      value={fundAmount}
+                      onChange={(e) => setFundAmount(e.target.value)}
+                      className="w-24 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleFund}
+                    disabled={loadingAction === 'fund'}
+                    className="w-full py-2.5 bg-yellow-600 hover:bg-yellow-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+                  >
+                    Виділити Кошти
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {profile?.role === 'Міністр фінансів' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <ReceiptText className="w-4 h-4 text-green-400" />
+                    <p className="text-[10px] font-bold text-white uppercase">Ставка Оподаткування</p>
+                  </div>
+                  <div className="flex gap-3 items-center">
+                    <input 
+                      type="range"
+                      min="1"
+                      max="50"
+                      value={taxInput}
+                      onChange={(e) => setTaxInput(e.target.value)}
+                      className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-green-400"
+                    />
+                    <span className="text-xs font-black text-white w-8">{taxInput}%</span>
+                  </div>
+                  <button 
+                    onClick={handleTaxChange}
+                    disabled={loadingAction === 'tax'}
+                    className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+                  >
+                    Затвердити Податок
+                  </button>
+                </div>
+
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Wallet className="w-4 h-4 text-ukraine-blue" />
+                    <p className="text-[10px] font-bold text-white uppercase">Премії та Штрафи</p>
+                  </div>
+                  <select 
+                    value={selectedPlayer}
+                    onChange={(e) => setSelectedPlayer(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                  >
+                    <option value="">Оберіть посадовця...</option>
+                    {players.map(p => (
+                      <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.role})</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <input 
+                      placeholder="Сума (нац. - для штрафу)"
+                      type="number"
+                      value={bonusAmount}
+                      onChange={(e) => setBonusAmount(e.target.value)}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                    />
+                    <input 
+                      placeholder="Причина"
+                      value={bonusReason}
+                      onChange={(e) => setBonusReason(e.target.value)}
+                      className="flex-[2] bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleBonus}
+                    disabled={loadingAction === 'bonus' || !selectedPlayer || !bonusReason}
+                    className="w-full py-2.5 bg-ukraine-blue hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+                  >
+                    Застосувати
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {profile?.role === 'Працівник ВФБ' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserSearch className="w-4 h-4 text-purple-400" />
+                    <p className="text-[10px] font-bold text-white uppercase">Фінансовий Аудит</p>
+                  </div>
+                  <select 
+                    value={selectedPlayer}
+                    onChange={(e) => setSelectedPlayer(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                  >
+                    <option value="">Оберіть об'єкт розслідування...</option>
+                    {players.map(p => (
+                      <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.role})</option>
+                    ))}
+                  </select>
+                  <button 
+                    onClick={handleAudit}
+                    disabled={loadingAction === 'audit' || !selectedPlayer}
+                    className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2"
+                  >
+                    <Search className="w-3 h-3" />
+                    Тіньовий Аудит
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {profile?.role === 'Працівник оподаткування' && (
+              <div className="space-y-4">
+                <button 
+                  onClick={handleRaid}
+                  disabled={loadingAction === 'raid'}
+                  className="w-full p-6 bg-gradient-to-br from-orange-500/20 to-red-500/20 border border-orange-500/20 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all group"
+                >
+                  <FileWarning className="w-8 h-8 text-orange-400 mb-3 mx-auto group-hover:scale-110 transition-transform" />
+                  <p className="text-xs font-black text-white uppercase tracking-widest">Провести Рейд на Бізнес</p>
+                  <p className="text-[9px] text-orange-400/70 uppercase font-bold mt-1">Ризик падіння рейтингу довіри</p>
+                </button>
+              </div>
+            )}
+
+            {!isInGov && (
+              <div className="py-12 text-center space-y-3">
+                 <Lock className="w-8 h-8 text-white/20 mx-auto" />
+                 <p className="text-xs text-text-dim uppercase font-black tracking-widest leading-relaxed">
+                   Управління недоступне.<br/>
+                   Ви не обіймаєте державну посаду.
+                 </p>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="lg:col-span-2 bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6 flex flex-col justify-center">
-          <div className="flex items-center gap-4 text-ukraine-yellow">
-            <AlertCircle className="w-8 h-8 opacity-50" />
-            <div className="flex-1">
-              <h4 className="text-lg font-black uppercase tracking-tighter">Спільне управління</h4>
-              <p className="text-xs text-text-dim">Усі дії в цьому розділі впливають на економіку всього сервера. Будьте відповідальними.</p>
+        {/* Right Column: Global Stats Info */}
+        <div className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-yellow-500/10 rounded-lg">
+              <Landmark className="w-5 h-5 text-yellow-400" />
             </div>
+            <div>
+              <h3 className="text-sm font-black text-white uppercase tracking-wider">Макроекономічні Показники</h3>
+              <p className="text-[10px] text-text-dim uppercase tracking-widest">Жива статистика сервера</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                <p className="text-[8px] font-black text-text-dim uppercase tracking-widest mb-1">Резерви</p>
+                <p className="text-lg font-black text-white">₴{(countryState?.budget || 0).toLocaleString()}</p>
+             </div>
+             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                <p className="text-[8px] font-black text-text-dim uppercase tracking-widest mb-1">Податкова Ставка</p>
+                <p className="text-lg font-black text-white">{((countryState?.taxRate || 0) * 100).toFixed(0)}%</p>
+             </div>
+             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                <p className="text-[8px] font-black text-text-dim uppercase tracking-widest mb-1">Довіра Народу</p>
+                <p className={`text-lg font-black ${countryState?.trustRating < 20 ? 'text-red-500' : 'text-green-400'}`}>
+                  {countryState?.trustRating || 0}%
+                </p>
+             </div>
+             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                <p className="text-[8px] font-black text-text-dim uppercase tracking-widest mb-1">Наступний PayDay</p>
+                <p className="text-lg font-black text-white">~15 хв</p>
+             </div>
+          </div>
+
+          <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
+             <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+               <AlertCircle className="w-3 h-3" /> Статус Уряду
+             </h4>
+             <p className="text-xs text-text-dim leading-relaxed">
+               {countryState?.trustRating < 20 ? (
+                 <span className="text-red-400 font-bold">УВАГА: В країні Майдани! Держава паралізована. Необхідно терміново підняти рейтинг або виділити кошти на соціалку.</span>
+               ) : (
+                 "Ситуація в країні стабільна. Уряд працює в штатному режимі. Протестна активність мінімальна."
+               )}
+             </p>
           </div>
         </div>
       </div>

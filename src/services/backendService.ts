@@ -202,17 +202,27 @@ class BackendService {
   async distributeSocialSupport(amountPerPlayer: number, type: 'support' | 'pension' = 'support') {
     try {
       const { collection, getDocs, writeBatch, doc, getDoc } = await import('firebase/firestore');
+      
+      // 1. Get online user IDs from presence
+      const presenceSnapshot = await getDocs(collection(db, 'presence'));
+      const onlineUids = presenceSnapshot.docs.map(d => d.id);
+      
+      if (onlineUids.length === 0) return { success: true, count: 0, message: 'Немає гравців в мережі (онлайн)' };
+
+      // 2. Process only online users
       const usersRef = collection(db, 'users');
       const querySnapshot = await getDocs(usersRef);
       
-      if (querySnapshot.empty) return { success: true, count: 0 };
-
       const targetCardType = type === 'support' ? 'e-support' : 'pension';
       let count = 0;
       const batch = writeBatch(db);
 
       querySnapshot.forEach((userDoc) => {
         const data = userDoc.data();
+        
+        // ONLY target online players as requested ("онлайн режим")
+        if (!onlineUids.includes(userDoc.id)) return;
+
         let cardIndex = -1;
         let updatedCards = [];
 

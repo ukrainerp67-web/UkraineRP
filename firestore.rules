@@ -149,8 +149,15 @@ service cloud.firestore {
     }
 
     // --- System Rules ---
+    match /system/budget {
+      allow read: if isSignedIn();
+      allow update: if isGovernment();
+      allow create: if isSuperAdmin();
+    }
+
     match /system/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
     }
 
     // --- Health Check Rules ---

@@ -199,6 +199,102 @@ class BackendService {
     }
   }
 
+  async triggerPayDay(userId: string) {
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) return { success: false, message: 'Користувача не знайдено' };
+      
+      const data = userSnap.data();
+      const role = data.role || 'Громадянин';
+      
+      // Salary configuration (PayDay)
+      const salaryRates: Record<string, number> = {
+        'Президент': 10000,
+        "Прем'єр-міністр": 8500,
+        "Прем'єр Міністр": 8500,
+        "Прем'єр міністр": 8500,
+        "Прем'єр-міністр": 8500,
+        'Міністр фінансів': 7000,
+        'Працівник ВФБ': 4000,
+        'Депутат': 5000,
+        'admin': 10000
+      };
+
+      const lastPayDay = data.lastPayDay ? (data.lastPayDay.toMillis ? data.lastPayDay.toMillis() : new Date(data.lastPayDay).getTime()) : 0;
+      const nowTs = Date.now();
+      const fifteenMins = 15 * 60 * 1000;
+
+      // Allow bypass if specifically triggered by admin or for debug (optional)
+      if (nowTs - lastPayDay < fifteenMins && !data.isSuperAdmin) {
+        const remaining = Math.ceil((fifteenMins - (nowTs - lastPayDay)) / 1000 / 60);
+        return { success: false, message: `Наступна зарплата доступна через ${remaining} хв.` };
+      }
+
+      const gross = salaryRates[role] || 2000; // Base for others
+      const taxRate = 0.20;
+      const taxAmount = Math.floor(gross * taxRate);
+      const netAmount = gross - taxAmount;
+
+      // Handle card balance update
+      let updatedCards = [...(data.bankCards || [])];
+      let cardIndex = updatedCards.findIndex(c => c.type === 'standard');
+      if (cardIndex === -1 && updatedCards.length > 0) cardIndex = 0;
+
+      if (cardIndex !== -1) {
+        updatedCards[cardIndex] = {
+          ...updatedCards[cardIndex],
+          balance: (Number(updatedCards[cardIndex].balance) || 0) + netAmount
+        };
+      } else {
+        // If no cards, maybe add to global balance if exists, but we use cards now
+        if (data.balance !== undefined) {
+           await updateDoc(userRef, { balance: (data.balance || 0) + netAmount });
+        } else {
+           return { success: false, message: 'У вас немає активної карти для отримання зарплати' };
+        }
+      }
+
+      // 1. Update User
+      await updateDoc(userRef, {
+        bankCards: updatedCards.length > 0 ? updatedCards : data.bankCards,
+        lastPayDay: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      // 2. Update Budget (Taxes go to budget)
+      const budgetRef = doc(db, 'system', 'budget');
+      const budgetSnap = await getDoc(budgetRef);
+      const currentBudget = budgetSnap.exists() ? (budgetSnap.data().amount || 0) : 0;
+      
+      await setDoc(budgetRef, {
+        amount: currentBudget + taxAmount,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // 3. Send Official Notification Report
+      const report = `🏦 Банк: Нарахування заробітної плати
+Ви отримали зарплату за останні 15 хвилин роботи.
+• Посада: ${role}
+• Нараховано: ${gross.toLocaleString()} ₴
+• Стягнуто податків (20% до Держбюджету): ${taxAmount.toLocaleString()} ₴
+• Зараховано на рахунок: ${netAmount.toLocaleString()} ₴
+Ваш поточний баланс: ${updatedCards[cardIndex]?.balance?.toLocaleString() || (data.balance + netAmount).toLocaleString()} ₴
+Баланс Державного бюджету: ${(currentBudget + taxAmount).toLocaleString()} ₴`;
+
+      await this.sendNotification(userId, {
+        title: '💰 PayDay: Зарплата',
+        message: report,
+        type: 'success'
+      });
+
+      return { success: true, netAmount, taxAmount };
+    } catch (error) {
+      console.error('PayDay Error:', error);
+      return { success: false, error };
+    }
+  }
+
   async distributeSocialSupport(amountPerPlayer: number, type: 'support' | 'pension' = 'support') {
     try {
       const { collection, getDocs, writeBatch, doc, getDoc, query, where, documentId } = await import('firebase/firestore');

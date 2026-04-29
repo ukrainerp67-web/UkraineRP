@@ -54,6 +54,19 @@ export const ChatView: React.FC = () => {
       return;
     }
 
+    const command = newMessage.toLowerCase().trim();
+    if (command === 'payday' || command === 'час зарплати') {
+        const res = await backend.triggerPayDay(profile.uid);
+        if (res.success) {
+            setNewMessage('');
+            return;
+        } else {
+            alert(res.message || 'Помилка отримання зарплати');
+            setNewMessage('');
+            return;
+        }
+    }
+
     const messageData: any = {
       senderId: profile.uid,
       senderName: `${profile.firstName} ${profile.lastName}`,

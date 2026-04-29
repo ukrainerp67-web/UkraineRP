@@ -15,6 +15,7 @@ import { BusinessView } from './views/BusinessView';
 import { AdminView } from './views/AdminView';
 import { Snowflake, Lock, Bell, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { PayDaySystem } from '../components/PayDaySystem';
 
 export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('profile');
@@ -115,6 +116,7 @@ export const Dashboard: React.FC = () => {
 
   return (
     <Layout activeView={activeTab} onViewChange={handleViewChange}>
+      <PayDaySystem />
       <div className="flex gap-6 lg:gap-8 min-h-[calc(100vh-14rem)] relative">
         {profile?.isFrozen && activeTab !== 'notifications' && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

@@ -30,12 +30,20 @@ service cloud.firestore {
       return isSignedIn() && (
         request.auth.token.email == 'ukrainerp67@gmail.com' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin')
+         ['admin', 'rada', 'banker'].hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')]))
       );
     }
 
     function isSuperAdmin() {
       return isSignedIn() && request.auth.token.email == 'ukrainerp67@gmail.com';
+    }
+
+    function isGovernment() {
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         ['admin', 'rada'].hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')]))
+      );
     }
 
     function isFrozen(userId) {
@@ -50,7 +58,7 @@ service cloud.firestore {
       allow create: if isOwner(userId) || isSuperAdmin();
       allow update: if isSuperAdmin() || (
         (isOwner(userId) || isAdmin()) && 
-        existing().get('email', '') != 'ukrainerp67@gmail.com'
+        (existing().get('email', '') != 'ukrainerp67@gmail.com' || isSuperAdmin())
       );
       allow delete: if isSuperAdmin() || (
         isAdmin() && 

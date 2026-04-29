@@ -126,7 +126,7 @@ export const BankView: React.FC = () => {
         <div className="absolute top-0 right-0 p-4 opacity-20">
           <Landmark className="w-16 h-16 md:w-20 md:h-20" />
         </div>
-        <div className="relative z-10 flex flex-col h-full justify-between gap-2">
+        <div className="relative z-10 flex flex-col h-full">
           <div className="flex justify-between items-start">
             <div>
               <p className="text-[7px] md:text-[8px] font-black uppercase tracking-widest opacity-80">Національний Банк</p>
@@ -135,17 +135,22 @@ export const BankView: React.FC = () => {
             <span className="text-xl md:text-2xl">{cardData?.icon}</span>
           </div>
           
-          <div className="mt-auto">
+          <div className="mt-auto mb-2">
             <p className="text-xs md:text-sm font-mono tracking-widest mb-1 md:mb-2">{card.number}</p>
-            <div className="flex justify-between items-end gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="text-[6px] font-bold uppercase opacity-60">Власник</p>
-                <p className="text-[8px] md:text-[10px] font-black uppercase tracking-tighter truncate">{profile?.firstName} {profile?.lastName}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-[6px] font-bold uppercase opacity-60">Баланс</p>
-                <p className="text-[10px] md:text-xs font-black">₴{card.balance?.toLocaleString() || 0}</p>
-              </div>
+          </div>
+
+          <div className="flex justify-between items-end gap-2 pb-1">
+            <div className="flex-1 min-w-0">
+              <p className="text-[6px] md:text-[7px] font-bold uppercase opacity-60">Власник</p>
+              <p className="text-[9px] md:text-[10px] font-black uppercase tracking-tighter truncate leading-none mt-0.5">
+                {profile?.firstName} {profile?.lastName}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[6px] md:text-[7px] font-bold uppercase opacity-60">Баланс</p>
+              <p className="text-[10px] md:text-xs font-black leading-none mt-0.5">
+                ₴{card.balance?.toLocaleString() || 0}
+              </p>
             </div>
           </div>
         </div>

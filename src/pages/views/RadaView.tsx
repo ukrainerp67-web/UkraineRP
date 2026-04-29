@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
-import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText } from 'lucide-react';
+import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle } from 'lucide-react';
 import { backend } from '../../services/backendService';
 
 export const RadaView: React.FC = () => {
@@ -100,6 +100,30 @@ export const RadaView: React.FC = () => {
         </div>
         <Building2 className="absolute -bottom-8 -right-8 w-32 md:w-48 h-32 md:h-48 text-blue-400/5 rotate-12 pointer-events-none" />
       </header>
+
+      {/* Global State & Role Info */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div className="lg:col-span-1 bg-white/5 border border-white/10 p-5 rounded-2xl backdrop-blur-md">
+          <h3 className="text-sm font-black text-blue-400 uppercase tracking-widest mb-3">📋 Роль посадовця</h3>
+          <div className="space-y-3 text-[11px] text-text-dim leading-relaxed">
+            <p><span className="text-white font-bold">Президент:</span> Вето на рішення, звернення до народу, догани посадовцям.</p>
+            <p><span className="text-white font-bold">Прем'єр:</span> Розподіл бюджету, фінансування сфер, урядові доручення.</p>
+            <p><span className="text-white font-bold">Мінфін:</span> Контроль казни, зміна податків, премії та штрафи.</p>
+            <p><span className="text-white font-bold">ВФБ:</span> Антикорупційні аудити, арешт рахунків, судові позови.</p>
+            <p><span className="text-white font-bold">Податківець:</span> Рейди на бізнес, наповнення бюджету, корупційні ризики.</p>
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6 flex flex-col justify-center">
+          <div className="flex items-center gap-4 text-ukraine-yellow">
+            <AlertCircle className="w-8 h-8 opacity-50" />
+            <div className="flex-1">
+              <h4 className="text-lg font-black uppercase tracking-tighter">Спільне управління</h4>
+              <p className="text-xs text-text-dim">Усі дії в цьому розділі впливають на економіку всього сервера. Будьте відповідальними.</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {isGovLeader && (
         <motion.div 

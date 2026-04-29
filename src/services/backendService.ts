@@ -235,8 +235,8 @@ class BackendService {
             const notificationRef = doc(collection(db, 'notifications'));
             batch.set(notificationRef, {
               userId: userDoc.id,
-              title: targetCardType === 'e-support' ? 'Є-Підтримка' : 'Пенсійний фонд',
-              message: `На вашу карту зараховано соціальну виплату у розмірі ₴${amountPerPlayer.toLocaleString()}`,
+              title: targetCardType === 'e-support' ? 'Є-Підтримка 🇺🇦' : 'Пенсійний Фонд 🎖️',
+              message: `На вашу карту ${targetCardType === 'e-support' ? 'Є-Підтримка' : 'Пенсійна'} зараховано державну виплату у розмірі ₴${amountPerPlayer.toLocaleString()}`,
               type: 'success',
               read: false,
               createdAt: serverTimestamp()

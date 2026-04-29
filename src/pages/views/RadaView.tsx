@@ -42,9 +42,13 @@ export const RadaView: React.FC = () => {
 
     setLoadingAction(type);
     try {
-      const res = await backend.distributeSocialSupport(amount) as any;
+      const res = await backend.distributeSocialSupport(amount, type) as any;
       if (res.success) {
-        alert(`Успішно нараховано по ₴${amount.toLocaleString()} для ${res.count || 0} громадян!`);
+        if (res.count > 0) {
+          alert(`Успішно нараховано по ₴${amount.toLocaleString()} для ${res.count} громадян!`);
+        } else {
+          alert(res.message || 'Немає громадян, які мають відповідну банківську карту для отримання цієї виплати.');
+        }
       } else {
         alert('Помилка: ' + (res.error?.message || 'Невідома помилка'));
       }

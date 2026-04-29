@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { MapPin, Calendar, Clock, BadgeCheck, Fingerprint } from 'lucide-react';
+import { MapPin, Calendar, Clock, BadgeCheck, Fingerprint, Copy, CheckCircle2 } from 'lucide-react';
 
 interface PassportProps {
   uid: string;
@@ -26,6 +26,7 @@ export const Passport: React.FC<PassportProps> = ({
   onPhotoClick
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -34,7 +35,16 @@ export const Passport: React.FC<PassportProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const tickerText = `ЗАШИФРОВАНО • ${currentTime.toLocaleDateString('uk-UA')} • ${currentTime.toLocaleTimeString('uk-UA')} • DOCUMENT SECURED • ID UA-${uid ? uid.slice(0, 8).toUpperCase() : 'PENDING'} • `;
+  const passportId = uid ? `UA-${uid.slice(0, 8).toUpperCase()}` : 'UA-PENDING';
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(passportId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const tickerText = `ЗАШИФРОВАНО • ${currentTime.toLocaleDateString('uk-UA')} • ${currentTime.toLocaleTimeString('uk-UA')} • DOCUMENT SECURED • ID ${passportId} • `;
 
   return (
       <motion.div 
@@ -124,7 +134,12 @@ export const Passport: React.FC<PassportProps> = ({
                 <DataField label="ПРІЗВИЩЕ" value={lastName.toUpperCase()} />
                 <DataField label="ІМ'Я" value={firstName.toUpperCase()} />
                 <DataField label="ДАТА РЕЄСТРАЦІЇ" value={birthDate} />
-                <DataField label="ID ДОКУМЕНТА" value={uid ? `UA-${uid.slice(0, 8).toUpperCase()}` : 'UA-PENDING'} />
+                <DataField 
+                  label="ID ДОКУМЕНТА" 
+                  value={passportId} 
+                  onCopy={handleCopy}
+                  isCopied={copied}
+                />
                 <DataField label="СТАТЬ" value={sex === 'M' ? 'ЧОЛ' : 'ЖІН'} />
                 <DataField label="ГРОМАДЯНСТВО" value="УКРАЇНА" isHighlight />
               </div>
@@ -168,11 +183,26 @@ export const Passport: React.FC<PassportProps> = ({
     );
   };
 
-const DataField = ({ label, value, isHighlight }: { label: string, value: string, isHighlight?: boolean }) => (
-  <div className="flex flex-col min-w-0">
+const DataField = ({ label, value, isHighlight, onCopy, isCopied }: { label: string, value: string, isHighlight?: boolean, onCopy?: (e: any) => void, isCopied?: boolean }) => (
+  <div className="flex flex-col min-w-0 relative group/field">
     <span className="text-[6px] md:text-[8px] font-black text-text-muted uppercase tracking-widest mb-0.5 md:mb-1">{label}</span>
-    <span className={`text-[10px] md:text-sm font-black uppercase tracking-tight truncate leading-none ${isHighlight ? 'text-ukraine-blue' : 'text-[#E0E0E0]'}`}>
-      {value || '---'}
-    </span>
+    <div className="flex items-center gap-2">
+      <span className={`text-[10px] md:text-sm font-black uppercase tracking-tight truncate leading-none ${isHighlight ? 'text-ukraine-blue' : 'text-[#E0E0E0]'}`}>
+        {value || '---'}
+      </span>
+      {onCopy && (
+        <button 
+          onClick={onCopy}
+          className="p-1 hover:bg-white/10 rounded-md transition-colors"
+          title="Копіювати"
+        >
+          {isCopied ? (
+            <CheckCircle2 className="w-2 md:w-3.5 h-2 md:h-3.5 text-green-400" />
+          ) : (
+            <Copy className="w-2 md:w-3.5 h-2 md:h-3.5 text-white/20 group-hover/field:text-white/60 transition-colors" />
+          )}
+        </button>
+      )}
+    </div>
   </div>
 );

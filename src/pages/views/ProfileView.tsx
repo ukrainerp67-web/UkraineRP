@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { Passport } from '../../components/Passport';
-import { Shield, TrendingUp, Wallet, Star, UserCheck, MapPin, Users, Search, UserPlus, Check, X, UserMinus, MessageSquare, Clock, ShoppingBag, Fingerprint, Lock } from 'lucide-react';
+import { Shield, TrendingUp, Wallet, Star, UserCheck, MapPin, Users, Search, UserPlus, Check, X, UserMinus, MessageSquare, Clock, ShoppingBag, Fingerprint, Lock, Copy } from 'lucide-react';
 import { backend } from '../../services/backendService';
 import { useNotifications } from '../../context/NotificationContext';
 import { ChatView } from './ChatView';
@@ -19,6 +19,16 @@ export const ProfileView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'info' | 'friends' | 'chat'>('info');
   const [showWelcome, setShowWelcome] = useState(false);
   const [offlineEarnings, setOfflineEarnings] = useState(0);
+  const [idCopied, setIdCopied] = useState(false);
+
+  const passportIdFull = profile ? `UA-${profile.uid.slice(0, 8).toUpperCase()}` : '';
+
+  const copyPassportId = () => {
+    if (!passportIdFull) return;
+    navigator.clipboard.writeText(passportIdFull);
+    setIdCopied(true);
+    setTimeout(() => setIdCopied(false), 2000);
+  };
 
   useEffect(() => {
     // Welcome back logic
@@ -241,7 +251,16 @@ export const ProfileView: React.FC = () => {
               <div className="lg:col-span-2 space-y-4 md:space-y-6">
                  <header className="flex items-center justify-between px-2">
                     <h2 className="text-lg md:text-xl font-black uppercase tracking-[0.2em] text-white">ID-КАРТА</h2>
-                    <span className="text-[10px] md:text-[10px] text-text-muted font-bold uppercase tracking-widest truncate">Документ #UA-{profile.uid.slice(0, 8).toUpperCase()}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] md:text-[10px] text-text-muted font-bold uppercase tracking-widest truncate">Документ #{passportIdFull}</span>
+                      <button 
+                        onClick={copyPassportId}
+                        className="p-1 hover:bg-white/5 rounded-md text-text-muted hover:text-white transition-colors"
+                        title="Копіювати ID"
+                      >
+                         {idCopied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    </div>
                  </header>
                  
                  <div className="w-full">

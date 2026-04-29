@@ -1,12 +1,20 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { Landmark, ArrowUpRight, ArrowDownLeft, CreditCard, RefreshCw, Bitcoin } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Landmark, ArrowUpRight, ArrowDownLeft, CreditCard, RefreshCw, Bitcoin, ShieldCheck, PenTool, CheckCircle2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { backend } from '../../services/backendService';
 
 export const BankView: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const { sendNotification } = useNotifications();
+  const [showCardCreator, setShowCardCreator] = useState(false);
+  const [selectedCardType, setSelectedCardType] = useState<any>(null);
+  const [step, setStep] = useState(1);
+  const [passportId, setPassportId] = useState('');
+  const [signature, setSignature] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [creationError, setCreationError] = useState<string | null>(null);
   
   const handleAction = async (action: string) => {
     if (!profile) return;
@@ -21,6 +29,13 @@ export const BankView: React.FC = () => {
         'bank_transfer',
         { amount: 15000, fromId: 'system' }
       );
+    } else if (action === 'Карта') {
+      const ownedTypes = profile.bankCards?.map((c: any) => c.type) || [];
+      if (ownedTypes.length >= 5) {
+        alert("Ви вже володієте всіма можливими типами карт Національного Банку.");
+        return;
+      }
+      setShowCardCreator(true);
     } else {
       await sendNotification(
         profile.uid,
@@ -31,12 +46,113 @@ export const BankView: React.FC = () => {
     }
   };
 
+  const CARD_TYPES = [
+    { id: 'e-support', name: 'Є-Підтримка від держави', color: 'from-blue-600 to-blue-400', icon: '🇺🇦', desc: 'Для соціальних виплат та допомоги' },
+    { id: 'pension', name: 'Пенсійний фонд', color: 'from-amber-600 to-yellow-500', icon: '🎖️', desc: 'Для пенсійних нарахувань', reqLevel: 35 },
+    { id: 'standard', name: 'Звичайна гривнева карта', color: 'from-zinc-800 to-zinc-600', icon: '💳', desc: 'Універсальна карта для платежів' },
+    { id: 'usd', name: 'Доларова карта', color: 'from-emerald-700 to-green-500', icon: '💵', desc: 'Валютні операції в USD' },
+    { id: 'eur', name: 'Єврова карта', color: 'from-indigo-800 to-blue-700', icon: '💶', desc: 'Валютні операції в EUR' },
+  ];
+
+  const handleCreateCard = async () => {
+    if (!profile || !selectedCardType) return;
+    setCreationError(null);
+
+    // Validation
+    const expectedId = `UA-${profile.uid.slice(0, 8).toUpperCase()}`;
+    if (passportId.toUpperCase() !== expectedId) {
+      setCreationError('Помилка: Невірний ID документа. Перевірте дані у вашому паспорті.');
+      return;
+    }
+
+    if (signature !== profile.signature) {
+      setCreationError('Ваш підпис не відповідає дійсності, спробуйте ще раз');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const cardNumber = Array.from({length: 4}, () => Math.floor(Math.random() * 9000 + 1000)).join(' ');
+      const currentCards = profile.bankCards || [];
+      const newCard = {
+        type: selectedCardType.id,
+        number: cardNumber,
+        createdAt: new Date().toISOString(),
+        passportId: expectedId,
+        label: selectedCardType.name,
+        balance: 0
+      };
+
+      await backend.saveProfile({
+        ...profile,
+        bankCards: [...currentCards, newCard]
+      });
+      
+      await refreshProfile();
+      await sendNotification(profile.uid, 'Банківська карта', `Вашу карту "${selectedCardType.name}" активовано!`, 'success');
+      setShowCardCreator(false);
+      resetCreator();
+    } catch (error) {
+      console.error('Card creation error:', error);
+      alert('Сталася помилка при створенні карти.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const resetCreator = () => {
+    setSelectedCardType(null);
+    setStep(1);
+    setPassportId('');
+    setSignature('');
+    setCreationError(null);
+  };
+
   const actions = [
+    { label: 'Карта', icon: CreditCard, desc: profile?.bankCards?.length ? `У вас активних карт: ${profile.bankCards.length}` : 'Створити банківську карту', color: 'text-ukraine-blue' },
     { label: 'Депозит', icon: ArrowUpRight, desc: '4% річних в ігровій валюті', color: 'text-blue-400' },
     { label: 'Кредит', icon: ArrowDownLeft, desc: 'До 1,000,000 ₴ під 15% застави', color: 'text-red-400' },
     { label: 'Перекази', icon: CreditCard, desc: 'Переказ гравцям за ID чи Ім’ям', color: 'text-yellow-400' },
-    { label: 'Обмін', icon: RefreshCw, desc: 'Курс: 1$ = 41.5 ₴ / 1€ = 45.2 ₴', color: 'text-green-400' },
   ];
+
+  const renderCard = (card: any) => {
+    const cardData = CARD_TYPES.find(t => t.id === card.type);
+    return (
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className={`w-full max-w-[320px] aspect-[1.58/1] rounded-2xl p-6 text-white relative shadow-2xl overflow-hidden bg-gradient-to-br ${cardData?.color || 'from-gray-700 to-gray-500'}`}
+      >
+        <div className="absolute top-0 right-0 p-4 opacity-20">
+          <Landmark className="w-20 h-20" />
+        </div>
+        <div className="relative z-10 flex flex-col h-full justify-between">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[8px] font-black uppercase tracking-widest opacity-80">Національний Банк</p>
+              <p className="text-xs font-bold leading-tight">{card.label}</p>
+            </div>
+            <span className="text-2xl">{cardData?.icon}</span>
+          </div>
+          
+          <div>
+            <p className="text-sm font-mono tracking-widest mb-1">{card.number}</p>
+            <div className="flex justify-between items-end">
+              <div>
+                <p className="text-[6px] font-bold uppercase opacity-60">Власник</p>
+                <p className="text-[10px] font-black uppercase tracking-tighter">{profile?.firstName} {profile?.lastName}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[6px] font-bold uppercase opacity-60">Баланс</p>
+                <p className="text-xs font-black">₴{card.balance?.toLocaleString() || 0}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 blur-sm" />
+      </motion.div>
+    );
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-8">
@@ -49,17 +165,33 @@ export const BankView: React.FC = () => {
           <p className="text-gray-500 text-[10px] md:text-xs mt-1 uppercase font-bold tracking-widest leading-none">Фінансова безпека твого майбутнього</p>
         </div>
         <div className="text-center sm:text-right relative z-10 w-full sm:w-auto bg-bg-dark/50 sm:bg-transparent p-3 sm:p-0 rounded-xl border sm:border-0 border-white/5">
-          <p className="text-[9px] md:text-[10px] uppercase font-bold text-gray-500 mb-1">Твій баланс</p>
+          <p className="text-[9px] md:text-[10px] uppercase font-bold text-gray-500 mb-1">Головний баланс</p>
           <p className="text-2xl md:text-3xl font-black text-white">{profile?.balance.toLocaleString()} ₴</p>
         </div>
-        {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/5 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl pointer-events-none" />
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className="space-y-4">
-          <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Банківські послуги</h3>
-          <div className="grid gap-3">
+          <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Ваші активи</h3>
+          <div className="flex flex-col items-center">
+            {profile?.bankCards && profile.bankCards.length > 0 ? (
+              <div className="w-full flex overflow-x-auto gap-4 py-4 px-2 snap-x custom-scrollbar">
+                {profile.bankCards.map((card: any, idx: number) => (
+                  <div key={idx} className="snap-center shrink-0">
+                    {renderCard(card)}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="w-full aspect-[1.58/1] rounded-2xl border-2 border-dashed border-white/5 flex flex-col items-center justify-center bg-white/2 space-y-2 opacity-50 grayscale">
+                <CreditCard className="w-8 h-8 text-white/20" />
+                <p className="text-[10px] uppercase font-black tracking-widest text-white/20">Немає активних карт</p>
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-3 pt-4">
             {actions.map((action) => (
               <button
                 key={action.label}
@@ -107,6 +239,175 @@ export const BankView: React.FC = () => {
           </div>
         </section>
       </div>
+
+      <AnimatePresence>
+        {showCardCreator && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => { if (!isProcessing) setShowCardCreator(false); }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-card-dark border border-white/10 p-6 md:p-8 rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden"
+            >
+              <header className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <CreditCard className="w-6 h-6 text-ukraine-blue" />
+                  <h3 className="text-xl font-black text-white uppercase tracking-tighter">Створення банківської карти</h3>
+                </div>
+                <button onClick={() => setShowCardCreator(false)} disabled={isProcessing} className="p-2 hover:bg-white/5 rounded-full">
+                  <X className="w-6 h-6 text-gray-500" />
+                </button>
+              </header>
+
+              {step === 1 ? (
+                <div className="space-y-6">
+                  <p className="text-xs text-text-muted">Виберіть тип карти, який ви бажаєте відкрити. Кожен тип карти можна мати лише в одному екземплярі:</p>
+                  <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                    {CARD_TYPES.filter(t => !(profile.bankCards?.some((c: any) => c.type === t.id))).map(type => {
+                      const isLocked = type.reqLevel && (profile.level || 0) < type.reqLevel;
+                      return (
+                        <button
+                          key={type.id}
+                          disabled={isLocked}
+                          onClick={() => setSelectedCardType(type)}
+                          className={`w-full p-4 rounded-2xl border transition-all text-left flex items-start gap-4 ${
+                            selectedCardType?.id === type.id 
+                              ? `bg-gradient-to-br ${type.color} border-white/20 text-white` 
+                              : isLocked 
+                                ? 'bg-white/2 border-white/5 opacity-50 grayscale cursor-not-allowed'
+                                : 'bg-white/5 border-white/5 hover:bg-white/10 text-text-muted hover:text-white'
+                          }`}
+                        >
+                          <span className="text-2xl mt-1">{type.icon}</span>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-center">
+                              <p className="font-black text-sm uppercase">{type.name}</p>
+                              {type.reqLevel && (
+                                <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${isLocked ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                                  Р-{type.reqLevel}+
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] opacity-80">
+                              {isLocked ? `Необхідно досягти ${type.reqLevel} рівня для отримання` : type.desc}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button 
+                    disabled={!selectedCardType}
+                    onClick={() => setStep(2)}
+                    className="w-full py-4 bg-white text-black font-black uppercase rounded-2xl tracking-widest disabled:opacity-50 transition-all hover:scale-[1.02]"
+                  >
+                    ПРОДОВЖИТИ
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-2xl flex gap-4">
+                    <ShieldCheck className="w-8 h-8 text-ukraine-blue shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-white uppercase mb-1">Безпека та верифікація</p>
+                      <p className="text-[10px] text-text-muted leading-relaxed">Для закріплення вас як клієнта банку, введіть дані вашого цифрового паспорта та підпис.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="p-3 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                         <div className="w-10 h-12 bg-zinc-800 rounded border border-white/10 flex items-center justify-center overflow-hidden grayscale">
+                           {profile.passportPhoto ? (
+                             <img src={profile.passportPhoto} className="w-full h-full object-cover opacity-50" alt="passport" />
+                           ) : (
+                             <Landmark className="w-4 h-4 text-white/20" />
+                           )}
+                         </div>
+                         <div>
+                           <p className="text-[10px] font-black text-white uppercase">Копія паспорта</p>
+                           <p className="text-[8px] text-green-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                             <CheckCircle2 className="w-2 h-2" /> Прикріплено автоматично
+                           </p>
+                         </div>
+                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-dim uppercase tracking-widest px-1">ID КАРТИ (З паспорта)</label>
+                      <input 
+                        type="text" 
+                        placeholder="Наприклад: UA-A1B2C3D4"
+                        value={passportId}
+                        onChange={(e) => setPassportId(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white font-bold placeholder:text-white/10 uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-text-dim uppercase tracking-widest px-1 flex justify-between">
+                         ВЕРИФІКАЦІЯ ПІДПИСУ
+                         <span className="text-ukraine-blue animate-pulse flex items-center gap-1"><PenTool className="w-2.5 h-2.5" /> Очікування введення...</span>
+                       </label>
+                       <div className="relative">
+                         <input 
+                            type="text" 
+                            placeholder="Ваш унікальний підпис..."
+                            value={signature}
+                            onChange={(e) => setSignature(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl p-6 text-white font-serif italic text-lg placeholder:text-white/5 italic"
+                          />
+                          <PenTool className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/10" />
+                       </div>
+                    </div>
+                  </div>
+
+                  {creationError && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-bold uppercase tracking-wider text-center"
+                    >
+                      {creationError}
+                    </motion.div>
+                  )}
+
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setStep(1)}
+                      disabled={isProcessing}
+                      className="flex-1 py-4 bg-secondary-dark text-white font-black uppercase rounded-2xl tracking-widest transition-all"
+                    >
+                      НАЗАД
+                    </button>
+                    <button 
+                      onClick={handleCreateCard}
+                      disabled={isProcessing || !passportId || !signature}
+                      className="flex-3 py-4 bg-ukraine-blue text-white font-black uppercase rounded-2xl tracking-widest shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 hover:bg-blue-400 transition-all active:scale-95"
+                    >
+                      {isProcessing ? (
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          АКТИВУВАТИ КАРТУ
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

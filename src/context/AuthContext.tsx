@@ -4,6 +4,15 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 
+interface BankCard {
+  type: 'e-support' | 'pension' | 'standard' | 'usd' | 'eur';
+  number: string;
+  createdAt: string;
+  passportId: string;
+  label: string;
+  balance: number;
+}
+
 interface UserProfile {
   uid: string;
   email: string;
@@ -22,6 +31,7 @@ interface UserProfile {
   dailyTax?: number;
   lastTaxUpdate?: any;
   isFrozen?: boolean;
+  bankCards?: BankCard[];
   businesses?: {
     businessId: string;
     purchasedAt: any;

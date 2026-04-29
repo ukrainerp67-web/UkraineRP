@@ -206,31 +206,63 @@ class BackendService {
     }
   }
 
-  async distributeSocialSupport(amountPerPlayer: number, filterRole: string = 'user') {
+  async distributeSocialSupport(amountPerPlayer: number, type: 'support' | 'pension' = 'support') {
     try {
-      const { collection, query, where, getDocs, writeBatch } = await import('firebase/firestore');
+      const { collection, getDocs, writeBatch, doc } = await import('firebase/firestore');
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('role', '==', filterRole));
-      const querySnapshot = await getDocs(q);
+      // We get all users and filter internally to respect the bank card requirement
+      const querySnapshot = await getDocs(usersRef);
       
       if (querySnapshot.empty) return { success: true, count: 0 };
 
-      const totalCost = querySnapshot.size * amountPerPlayer;
+      const targetCardType = type === 'support' ? 'e-support' : 'pension';
+      let count = 0;
+      const batch = writeBatch(db);
+
+      querySnapshot.forEach((userDoc) => {
+        const data = userDoc.data();
+        // Check if user has the correct bank card in their bankCards array
+        if (data.bankCards && Array.isArray(data.bankCards)) {
+          const cardIndex = data.bankCards.findIndex((c: any) => c.type === targetCardType);
+          
+          if (cardIndex !== -1) {
+            const userRef = userDoc.ref;
+            const updatedCards = [...data.bankCards];
+            updatedCards[cardIndex] = {
+              ...updatedCards[cardIndex],
+              balance: (updatedCards[cardIndex].balance || 0) + amountPerPlayer
+            };
+            
+            batch.update(userRef, {
+              bankCards: updatedCards,
+              updatedAt: serverTimestamp()
+            });
+
+            // Add notification for the user
+            const notificationRef = doc(collection(db, 'notifications'));
+            batch.set(notificationRef, {
+              userId: userDoc.id,
+              title: targetCardType === 'e-support' ? 'Є-Підтримка' : 'Пенсійний фонд',
+              message: `На вашу карту зараховано соціальну виплату у розмірі ₴${amountPerPlayer.toLocaleString()}`,
+              type: 'success',
+              read: false,
+              createdAt: serverTimestamp()
+            });
+
+            count++;
+          }
+        }
+      });
+
+      if (count === 0) return { success: true, count: 0, message: 'Немає громадян з відповідними картами для виплати' };
+
+      const totalCost = count * amountPerPlayer;
       const budgetResult = await this.removeFromBudget(totalCost);
       
       if (!budgetResult.success) return budgetResult;
 
-      const batch = writeBatch(db);
-      querySnapshot.forEach((doc) => {
-        const userRef = doc.ref;
-        batch.update(userRef, {
-          balance: (doc.data().balance || 0) + amountPerPlayer,
-          updatedAt: serverTimestamp()
-        });
-      });
-
       await batch.commit();
-      return { success: true, count: querySnapshot.size };
+      return { success: true, count };
     } catch (error) {
       console.error('Error distributing social support:', error);
       return { success: false, error };

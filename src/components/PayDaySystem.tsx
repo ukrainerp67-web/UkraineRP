@@ -9,29 +9,45 @@ export const PayDaySystem: React.FC = () => {
     useEffect(() => {
         if (!profile) return;
 
-        // Calculate time since last payday to sync initial timer
-        const lastPayDay = profile.lastPayDay ? (profile.lastPayDay.toMillis ? profile.lastPayDay.toMillis() : new Date(profile.lastPayDay).getTime()) : 0;
-        const now = Date.now();
-        const elapsed = now - lastPayDay;
-        const fifteenMins = 15 * 60 * 1000;
+        const syncTimer = () => {
+            const lastPayDay = profile.lastPayDay ? (profile.lastPayDay.toMillis ? profile.lastPayDay.toMillis() : new Date(profile.lastPayDay).getTime()) : 0;
+            const now = Date.now();
+            const elapsed = now - lastPayDay;
+            const fifteenMins = 15 * 60 * 1000;
 
-        let initialTime = fifteenMins - elapsed;
-        if (initialTime < 0) initialTime = 0;
-        
-        setTimeLeft(Math.floor(initialTime / 1000));
+            let initialTime = fifteenMins - elapsed;
+            if (initialTime < 0) initialTime = 0;
+            setTimeLeft(Math.floor(initialTime / 1000));
+        };
+
+        syncTimer();
 
         const interval = setInterval(() => {
+            // ONLY tick if the page is visible (player is active in game)
+            if (document.visibilityState !== 'visible') return;
+
             setTimeLeft(prev => {
-                if (prev <= 1) {
-                    // Trigger PayDay
+                if (prev <= 0) {
                     backend.triggerPayDay(profile.uid);
-                    return 15 * 60; // Reset
+                    return 15 * 60; // Reset timer
                 }
                 return prev - 1;
             });
         }, 1000);
 
-        return () => clearInterval(interval);
+        // Re-sync timer when tab becomes visible again
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                syncTimer();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, [profile?.uid, profile?.lastPayDay]);
 
     // This component renders nothing but handles the logic

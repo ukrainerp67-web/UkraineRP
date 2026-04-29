@@ -82,6 +82,7 @@ interface AuthContextType {
   buyGlobalStock: () => Promise<number>;
   endDay: () => Promise<number>;
   taxRate: number;
+  globalBudget: number;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -97,7 +98,8 @@ const AuthContext = createContext<AuthContextType>({
   collectProfits: async () => undefined,
   buyGlobalStock: async () => 0,
   endDay: async () => 0,
-  taxRate: 0.05
+  taxRate: 0.20,
+  globalBudget: 1000000
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -105,6 +107,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [onlinePlayers, setOnlinePlayers] = useState<OnlinePlayer[]>([]);
+  const [globalTaxRate, setGlobalTaxRate] = useState(0.20);
+  const [globalBudget, setGlobalBudget] = useState(1000000);
 
   const refreshProfile = async () => {
     if (user) {
@@ -167,7 +171,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const collectProfits = async (businessId: string, gross: number, evade: boolean = false) => {
     if (!profile) return;
-    const taxRate = getTaxPercent(profile.socialRating);
+    
+    // Use global tax rate instead of local SR-based one for business
+    const taxRate = globalTaxRate;
     const taxAmount = evade ? 0 : Math.floor(gross * taxRate);
     const netProfit = gross - taxAmount;
 
@@ -188,12 +194,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt: now
     };
 
+    // If card exists, update card balance instead of global balance
+    if (updatedProfile.bankCards && updatedProfile.bankCards.length > 0) {
+       const cardIdx = updatedProfile.bankCards.findIndex(c => c.type === 'standard');
+       const actualIdx = cardIdx !== -1 ? cardIdx : 0;
+       updatedProfile.bankCards[actualIdx].balance = (Number(updatedProfile.bankCards[actualIdx].balance) || 0) + netProfit;
+    }
+
     if (!evade && taxAmount > 0) {
-      await backend.addToBudget(taxAmount);
+      // THIS IS THE CRITICAL LINE: Ensure it waits for the budget update
+      const budgetResult = await backend.addToBudget(taxAmount);
+      if (!budgetResult.success) {
+          console.error("Failed to add to budget", budgetResult.error);
+      }
+      
       await backend.logEvent({
         type: 'tax',
         player: `${profile.firstName} ${profile.lastName}`,
-        message: `сплачено податків на суму ₴${taxAmount.toLocaleString()} до держбюджету`
+        message: `сплачено податків на суму ₴${taxAmount.toLocaleString()} до держбюджету (Виручка: ₴${gross.toLocaleString()})`
       });
     } else if (evade) {
       await backend.logEvent({
@@ -271,21 +289,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let profileUnsubscribe: (() => void) | null = null;
     let playersUnsubscribe: (() => void) | null = null;
+    let globalUnsubscribe: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log("Auth state changed:", firebaseUser?.uid);
       // Cleanup previous subscriptions
       if (profileUnsubscribe) profileUnsubscribe();
       if (playersUnsubscribe) playersUnsubscribe();
+      if (globalUnsubscribe) globalUnsubscribe();
 
       try {
         if (firebaseUser) {
+          // ... (existing logic)
           const authUser: AuthUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
           };
           setUser(authUser);
           localStorage.setItem("user", JSON.stringify(authUser));
+
+          // 0. Global state listener
+          globalUnsubscribe = backend.onGlobalStateUpdate((state) => {
+            if (state) {
+              setGlobalTaxRate(state.taxRate || 0.20);
+              setGlobalBudget(state.budget || 0);
+            }
+          });
 
           // 1. Profile real-time listener
           profileUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
@@ -394,6 +423,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearTimeout(failsafe);
       if (profileUnsubscribe) profileUnsubscribe();
       if (playersUnsubscribe) playersUnsubscribe();
+      if (globalUnsubscribe) globalUnsubscribe();
     };
   }, []);
 
@@ -411,7 +441,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         collectProfits,
         buyGlobalStock,
         endDay,
-        taxRate: profile ? getTaxPercent(profile.socialRating) : 0.05
+        taxRate: globalTaxRate,
+        globalBudget
     }}>
       {children}
     </AuthContext.Provider>

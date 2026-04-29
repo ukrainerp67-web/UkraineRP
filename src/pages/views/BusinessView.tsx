@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Building2, ReceiptText, Briefcase, TrendingUp, Package, Wallet, Landmark, Clock, CheckCircle2 } from 'lucide-react';
+import { Building2, ReceiptText, Briefcase, TrendingUp, Package, Wallet, Landmark, Clock, CheckCircle2, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { backend } from '../../services/backendService';
 import { useNotifications } from '../../context/NotificationContext';
@@ -49,7 +49,7 @@ export const BusinessView: React.FC = () => {
   }, []);
 
   const calculateCurrentProfit = (b: any) => {
-    if (!b.stockPurchasedAt) return 0;
+    if (!b.stockPurchasedAt || b.isBlocked) return 0;
     
     const stockStartTime = new Date(b.stockPurchasedAt).getTime();
     const lastCollectTime = new Date(b.lastProfitAt || b.stockPurchasedAt).getTime();
@@ -252,7 +252,12 @@ export const BusinessView: React.FC = () => {
                   <span className="px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-xl text-[10px] font-black text-white uppercase tracking-widest border border-white/10">
                     {b.meta?.category === 'retail' ? '🛒 Ритейл' : b.meta?.category === 'gas' ? '⛽ АЗС' : b.meta?.category === 'auto' ? '🚗 Авто' : b.meta?.category === 'football' ? '⚽ Спорт' : '✈️ Логістика'}
                   </span>
-                  {b.isStocked && (
+                  {b.isBlocked && (
+                    <span className="px-3 py-1.5 bg-red-600/90 backdrop-blur-md rounded-xl text-[10px] font-black text-white uppercase tracking-widest border border-red-500/50 flex items-center gap-1.5">
+                      <Lock className="w-3 h-3" /> ЗАБЛОКОВАНО
+                    </span>
+                  )}
+                  {b.isStocked && !b.isBlocked && (
                     <div className="px-3 py-1.5 bg-ukraine-blue/80 backdrop-blur-md rounded-xl text-[10px] font-black text-white uppercase tracking-widest border border-ukraine-blue/30 flex items-center gap-1.5 animate-pulse">
                       <TrendingUp className="w-3 h-3" /> ₴{calculateCurrentProfit(b).toLocaleString()}
                     </div>
@@ -290,14 +295,23 @@ export const BusinessView: React.FC = () => {
                 </div>
 
                 <div className="flex gap-4">
-                  <button 
-                    onClick={() => setCollectingBusiness({ ...b, calculatedProfit: calculateCurrentProfit(b) })}
-                    disabled={loadingAction !== null || calculateCurrentProfit(b) <= 0}
-                    className="flex-1 py-4 bg-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-green-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <TrendingUp className="w-4 h-4" />
-                    ЗІБРАТИ ПРИБУТОК (₴{calculateCurrentProfit(b).toLocaleString()})
-                  </button>
+                    <button 
+                      onClick={() => setCollectingBusiness({ ...b, calculatedProfit: calculateCurrentProfit(b) })}
+                      disabled={loadingAction !== null || calculateCurrentProfit(b) <= 0 || b.isBlocked}
+                      className={`flex-1 py-4 ${b.isBlocked ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-green-500 text-white'} rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg ${b.isBlocked ? '' : 'shadow-green-500/20'} transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2`}
+                    >
+                      {b.isBlocked ? (
+                        <>
+                          <Lock className="w-4 h-4" />
+                          АКТИВ ЗАБЛОКОВАНО
+                        </>
+                      ) : (
+                        <>
+                          <TrendingUp className="w-4 h-4" />
+                          ЗІБРАТИ ПРИБУТОК (₴{calculateCurrentProfit(b).toLocaleString()})
+                        </>
+                      )}
+                    </button>
                 </div>
               </div>
             </motion.div>

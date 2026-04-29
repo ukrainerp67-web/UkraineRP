@@ -33,8 +33,26 @@ export const RadaView: React.FC = () => {
   const [speech, setSpeech] = useState<string>('');
   const [bonusReason, setBonusReason] = useState<string>('');
   const [bonusAmount, setBonusAmount] = useState<string>('1000');
+  const [fineDeadline, setFineDeadline] = useState<string>('24');
   const [fundAmount, setFundAmount] = useState<string>('50000');
+  const [targetBusinesses, setTargetBusinesses] = useState<any[]>([]);
   const [fundSphere, setFundSphere] = useState<string>('Медицина');
+
+  useEffect(() => {
+    if (selectedPlayer) {
+      const fetchTargetDetails = async () => {
+        const target = await backend.getProfile(selectedPlayer);
+        if (target && target.businesses) {
+          setTargetBusinesses(target.businesses);
+        } else {
+          setTargetBusinesses([]);
+        }
+      };
+      fetchTargetDetails();
+    } else {
+      setTargetBusinesses([]);
+    }
+  }, [selectedPlayer]);
 
   useEffect(() => {
     const unsubscribe = backend.onGlobalStateUpdate((state) => {
@@ -98,9 +116,34 @@ export const RadaView: React.FC = () => {
 
   const handleBonus = async () => {
     if (!profile || !selectedPlayer || !bonusReason) return;
+    const amount = parseInt(bonusAmount);
     setLoadingAction('bonus');
-    await backend.applyBonusOrPenalty(profile.uid, selectedPlayer, parseInt(bonusAmount), bonusReason);
+    
+    // Original applyBonusOrPenalty now handles budget deduction for bonuses
+    await backend.applyBonusOrPenalty(profile.uid, selectedPlayer, amount, bonusReason);
+    
     setBonusReason('');
+    setLoadingAction(null);
+  };
+
+  const handleIssueFine = async () => {
+    if (!profile || !selectedPlayer || !bonusReason) return;
+    const amount = Math.abs(parseInt(bonusAmount));
+    setLoadingAction('fine');
+    await backend.issueFine(profile.uid, selectedPlayer, amount, bonusReason, parseInt(fineDeadline));
+    setBonusReason('');
+    setLoadingAction(null);
+  };
+
+  const handleToggleBlock = async (businessId: string, currentlyBlocked: boolean) => {
+    if (!profile || !selectedPlayer) return;
+    setLoadingAction(`block-${businessId}`);
+    await backend.toggleBusinessBlock(profile.uid, selectedPlayer, businessId, !currentlyBlocked);
+    
+    // Refresh local state
+    const target = await backend.getProfile(selectedPlayer);
+    if (target && target.businesses) setTargetBusinesses(target.businesses);
+    
     setLoadingAction(null);
   };
 
@@ -299,40 +342,99 @@ export const RadaView: React.FC = () => {
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Wallet className="w-4 h-4 text-ukraine-blue" />
-                    <p className="text-[10px] font-bold text-white uppercase">Премії та Штрафи</p>
+                    <p className="text-[10px] font-bold text-white uppercase">Фінансові Санкції та Заохочення</p>
                   </div>
                   <select 
                     value={selectedPlayer}
                     onChange={(e) => setSelectedPlayer(e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
                   >
-                    <option value="">Оберіть посадовця...</option>
+                    <option value="">Оберіть громадянина/посадовця...</option>
                     {players.map(p => (
-                      <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.role})</option>
+                      <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.role || 'Цивільний'})</option>
                     ))}
                   </select>
-                  <div className="flex gap-2">
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[8px] text-text-dim uppercase font-bold px-1">Сума (₴)</label>
+                      <input 
+                        placeholder="1000"
+                        type="number"
+                        value={bonusAmount}
+                        onChange={(e) => setBonusAmount(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[8px] text-text-dim uppercase font-bold px-1">Термін (год) *Лише для штрафу</label>
+                      <input 
+                        placeholder="24"
+                        type="number"
+                        value={fineDeadline}
+                        onChange={(e) => setFineDeadline(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-text-dim uppercase font-bold px-1">Причина дії</label>
                     <input 
-                      placeholder="Сума (нац. - для штрафу)"
-                      type="number"
-                      value={bonusAmount}
-                      onChange={(e) => setBonusAmount(e.target.value)}
-                      className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
-                    />
-                    <input 
-                      placeholder="Причина"
+                      placeholder="За плідну працю / Порушення статуту..."
                       value={bonusReason}
                       onChange={(e) => setBonusReason(e.target.value)}
-                      className="flex-[2] bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
                     />
                   </div>
-                  <button 
-                    onClick={handleBonus}
-                    disabled={loadingAction === 'bonus' || !selectedPlayer || !bonusReason}
-                    className="w-full py-2.5 bg-ukraine-blue hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
-                  >
-                    Застосувати
-                  </button>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button 
+                      onClick={handleBonus}
+                      disabled={loadingAction !== null || !selectedPlayer || !bonusReason}
+                      className="py-3 bg-green-600 hover:bg-green-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex flex-col items-center justify-center gap-1 shadow-lg shadow-green-500/10"
+                    >
+                      <Award className="w-3.5 h-3.5" />
+                      Виплатити Премію
+                    </button>
+                    <button 
+                      onClick={handleIssueFine}
+                      disabled={loadingAction !== null || !selectedPlayer || !bonusReason}
+                      className="py-3 bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex flex-col items-center justify-center gap-1 shadow-lg shadow-red-500/10"
+                    >
+                      <Gavel className="w-3.5 h-3.5" />
+                      Виписати Штраф
+                    </button>
+                  </div>
+
+                  {targetBusinesses.length > 0 && (
+                    <div className="pt-4 border-t border-white/5 space-y-2">
+                       <p className="text-[9px] font-black text-text-dim uppercase tracking-widest px-1">Управління майном (Блокування):</p>
+                       <div className="grid gap-2">
+                         {targetBusinesses.map((b: any) => (
+                           <div key={b.businessId} className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
+                             <div className="flex flex-col">
+                               <span className="text-[10px] font-bold text-white">{b.businessId}</span>
+                               <span className={`text-[8px] uppercase font-black ${b.isBlocked ? 'text-red-400' : 'text-green-400'}`}>
+                                 {b.isBlocked ? 'Заблоковано' : 'Активний'}
+                               </span>
+                             </div>
+                             <button 
+                               onClick={() => handleToggleBlock(b.businessId, b.isBlocked)}
+                               disabled={loadingAction !== null}
+                               className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${
+                                 b.isBlocked 
+                                   ? 'bg-green-600/20 text-green-400 hover:bg-green-600/40' 
+                                   : 'bg-red-600/20 text-red-400 hover:bg-red-600/40'
+                               }`}
+                             >
+                               {loadingAction === `block-${b.businessId}` ? '...' : (b.isBlocked ? 'Розблокувати' : 'Заблокувати')}
+                             </button>
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

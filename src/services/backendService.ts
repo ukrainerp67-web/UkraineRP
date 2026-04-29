@@ -25,7 +25,8 @@ import {
   addDoc,
   deleteDoc,
   orderBy,
-  limit
+  limit,
+  increment
 } from 'firebase/firestore';
 
 class BackendService {
@@ -160,8 +161,11 @@ class BackendService {
 
   async addToBudget(amount: number) {
     try {
-      const globalState = await this.getGlobalState();
-      await this.updateGlobalState({ budget: (globalState.budget || 0) + amount });
+      const docRef = doc(db, 'system', 'global');
+      await updateDoc(docRef, {
+        budget: increment(amount),
+        updatedAt: serverTimestamp()
+      });
       return { success: true };
     } catch (error) {
       console.error('Error adding to budget:', error);
@@ -171,9 +175,11 @@ class BackendService {
 
   async removeFromBudget(amount: number) {
     try {
-      const globalState = await this.getGlobalState();
-      if ((globalState.budget || 0) < amount) throw new Error('Недостатньо коштів у бюджеті');
-      await this.updateGlobalState({ budget: (globalState.budget || 0) - amount });
+      const docRef = doc(db, 'system', 'global');
+      await updateDoc(docRef, {
+        budget: increment(-amount),
+        updatedAt: serverTimestamp()
+      });
       return { success: true };
     } catch (error) {
       console.error('Error removing from budget:', error);
@@ -369,10 +375,31 @@ class BackendService {
     }
   }
 
+  async incrementBalance(uid: string, amount: number) {
+    const path = `users/${uid}`;
+    try {
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, {
+        balance: increment(amount),
+        updatedAt: serverTimestamp()
+      });
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+      return { success: false, error };
+    }
+  }
+
   async applyBonusOrPenalty(adminId: string, targetId: string, amount: number, reason: string) {
     try {
       const target = await this.getProfile(targetId);
       if (!target) return { success: false, message: 'Ціль не знайдена' };
+
+      // If it's a bonus, deduct from budget first
+      if (amount > 0) {
+        const budgetResult = await this.removeFromBudget(amount);
+        if (!budgetResult.success) return { success: false, error: 'Недостатньо коштів у держбюджеті для виплати премії!' };
+      }
 
       const bankCards = [...(target.bankCards || [])];
       let cardIdx = bankCards.findIndex(c => c.type === 'standard');
@@ -386,7 +413,7 @@ class BackendService {
         });
       } else {
         await updateDoc(doc(db, 'users', targetId), { 
-          balance: (Number(target.balance) || 0) + amount,
+          balance: increment(amount),
           updatedAt: serverTimestamp()
         });
       }
@@ -408,6 +435,106 @@ class BackendService {
     } catch (error) {
       return { success: false, error };
     }
+  }
+
+  async issueFine(adminId: string, targetId: string, amount: number, reason: string, deadlineHours: number) {
+    const path = `users/${targetId}/fines`;
+    try {
+      const deadline = new Date();
+      deadline.setHours(deadline.getHours() + deadlineHours);
+
+      const finesRef = collection(db, 'users', targetId, 'fines');
+      await addDoc(finesRef, {
+        amount,
+        reason,
+        issuedAt: serverTimestamp(),
+        deadline: deadline.toISOString(),
+        status: 'pending'
+      });
+
+      await this.sendNotification(targetId, {
+        title: '⚖️ Новий Штраф',
+        message: `Міністр фінансів виписав вам штраф у розмірі ₴${amount.toLocaleString()}. Причина: ${reason}. Термін оплати: до ${deadline.toLocaleString()}. Будь ласка, оплатіть його в банку.`,
+        type: 'error'
+      });
+
+      await this.logEvent({
+        type: 'fine_issued',
+        message: `Міністр фінансів виписав штраф гравцю ${targetId} на суму ₴${amount.toLocaleString()}. Причина: ${reason}`,
+        player: adminId
+      });
+
+      return { success: true };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      return { success: false, error };
+    }
+  }
+
+  async payFine(userId: string, fineId: string, amount: number, cardId: string) {
+    try {
+      // 1. Mark fine as paid
+      const fineRef = doc(db, 'users', userId, 'fines', fineId);
+      await updateDoc(fineRef, { status: 'paid', paidAt: serverTimestamp() });
+
+      // 2. Add to budget
+      await this.addToBudget(amount);
+
+      // 3. Log event
+      await this.logEvent({
+        type: 'fine_paid',
+        message: `Гравець ${userId} оплатив штраф у розмірі ₴${amount.toLocaleString()}`,
+        player: userId
+      });
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async toggleBusinessBlock(adminId: string, targetId: string, businessId: string, shouldBlock: boolean) {
+    try {
+      const target = await this.getProfile(targetId);
+      if (!target) return { success: false, message: 'Гравця не знайдено' };
+
+      const newBusinesses = (target.businesses || []).map((b: any) => 
+        b.businessId === businessId ? { ...b, isBlocked: shouldBlock } : b
+      );
+
+      await updateDoc(doc(db, 'users', targetId), {
+        businesses: newBusinesses,
+        updatedAt: serverTimestamp()
+      });
+
+      await this.sendNotification(targetId, {
+        title: shouldBlock ? '🚫 Бізнес заблоковано' : '✅ Бізнес розблоковано',
+        message: shouldBlock 
+          ? 'Міністр фінансів заблокував один з ваших бізнесів за несплату штрафу!' 
+          : 'Міністр фінансів розблокував ваш бізнес.',
+        type: shouldBlock ? 'error' : 'success'
+      });
+
+      await this.logEvent({
+        type: 'business_block',
+        message: `Міністр фінансів ${shouldBlock ? 'заблокував' : 'розблокував'} бізнес гравця ${target.firstName} ${target.lastName}`,
+        player: adminId
+      });
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  onFinesUpdate(userId: string, callback: (fines: any[]) => void) {
+    const finesRef = collection(db, 'users', userId, 'fines');
+    return onSnapshot(finesRef, (snapshot) => {
+      const fines = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      callback(fines);
+    }, (error) => {
+      console.warn("Fines snapshot error", error);
+    });
   }
 
   async triggerPayDay(userId: string) {

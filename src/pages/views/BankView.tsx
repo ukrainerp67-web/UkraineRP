@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Landmark, ArrowUpRight, ArrowDownLeft, CreditCard, RefreshCw, Bitcoin, ShieldCheck, PenTool, CheckCircle2, X } from 'lucide-react';
+import { Landmark, ArrowUpRight, ArrowDownLeft, CreditCard, RefreshCw, Bitcoin, ShieldCheck, PenTool, CheckCircle2, X, Wallet, Gavel, Calendar } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { backend } from '../../services/backendService';
@@ -9,12 +9,25 @@ export const BankView: React.FC = () => {
   const { profile, refreshProfile } = useAuth();
   const { sendNotification } = useNotifications();
   const [showCardCreator, setShowCardCreator] = useState(false);
+  const [showFinePayment, setShowFinePayment] = useState(false);
+  const [fines, setFines] = useState<any[]>([]);
+  const [selectedFine, setSelectedFine] = useState<any>(null);
+  const [selectedCardId, setSelectedCardId] = useState<string>('');
   const [selectedCardType, setSelectedCardType] = useState<any>(null);
   const [step, setStep] = useState(1);
   const [passportId, setPassportId] = useState('');
   const [signature, setSignature] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (profile?.uid) {
+      const unsubscribe = backend.onFinesUpdate(profile.uid, (data) => {
+        setFines(data.filter(f => f.status === 'pending'));
+      });
+      return () => unsubscribe();
+    }
+  }, [profile?.uid]);
   
   const handleAction = async (action: string) => {
     if (!profile) return;
@@ -36,6 +49,8 @@ export const BankView: React.FC = () => {
         return;
       }
       setShowCardCreator(true);
+    } else if (action === 'Штрафи') {
+      setShowFinePayment(true);
     } else {
       await sendNotification(
         profile.uid,
@@ -108,11 +123,46 @@ export const BankView: React.FC = () => {
     setCreationError(null);
   };
 
+  const handlePayFine = async () => {
+    if (!profile || !selectedFine || !selectedCardId) return;
+    
+    const card = profile.bankCards?.find((c: any) => c.number === selectedCardId);
+    if (!card) {
+      alert("Картку не знайдено");
+      return;
+    }
+
+    if (card.balance < selectedFine.amount) {
+      alert("Недостатньо коштів на цій карті");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const result = await backend.payFine(profile.uid, selectedFine.id, selectedFine.amount, selectedCardId);
+      
+      if (result.success) {
+        await refreshProfile();
+        setShowFinePayment(false);
+        setSelectedFine(null);
+        setSelectedCardId('');
+        alert("Штраф успішно оплачено! Гроші зараховані до Державного Бюджету.");
+      } else {
+        alert("Помилка при оплаті штрафу");
+      }
+    } catch (error: any) {
+       console.error("Fine payment error", error);
+       alert("Помилка при оплаті штрафу: " + (error.message || "Невідома помилка"));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const actions = [
     { label: 'Карта', icon: CreditCard, desc: profile?.bankCards?.length ? `У вас активних карт: ${profile.bankCards.length}` : 'Створити банківську карту', color: 'text-ukraine-blue' },
-    { label: 'Депозит', icon: ArrowUpRight, desc: '4% річних в ігровій валюті', color: 'text-blue-400' },
-    { label: 'Кредит', icon: ArrowDownLeft, desc: 'До 1,000,000 ₴ під 15% застави', color: 'text-red-400' },
+    { label: 'Штрафи', icon: Gavel, desc: fines.length > 0 ? `Є несплачені штрафи: ${fines.length}` : 'Немає виписаних штрафів', color: fines.length > 0 ? 'text-red-400 animate-pulse' : 'text-green-400' },
     { label: 'Перекази', icon: CreditCard, desc: 'Переказ гравцям за ID чи Ім’ям', color: 'text-yellow-400' },
+    { label: 'Кредит', icon: ArrowDownLeft, desc: 'До 1,000,000 ₴ під 15% застави', color: 'text-red-400' },
   ];
 
   const renderCard = (card: any) => {
@@ -409,6 +459,107 @@ export const BankView: React.FC = () => {
                   </div>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showFinePayment && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setShowFinePayment(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-card-dark border border-white/10 p-6 md:p-8 rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden"
+            >
+              <header className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <Gavel className="w-6 h-6 text-red-400" />
+                  <h3 className="text-xl font-black text-white uppercase tracking-tighter">Сплата Штрафів ⚖️</h3>
+                </div>
+                <button onClick={() => setShowFinePayment(false)} className="p-2 hover:bg-white/5 rounded-full">
+                  <X className="w-6 h-6 text-gray-500" />
+                </button>
+              </header>
+
+              <div className="space-y-6">
+                {fines.length === 0 ? (
+                  <div className="py-12 text-center space-y-3">
+                    <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto">
+                      <CheckCircle2 className="w-8 h-8 text-green-400" />
+                    </div>
+                    <p className="text-sm font-bold text-white uppercase tracking-widest">Немає активних штрафів</p>
+                    <p className="text-[10px] text-text-dim">Ваша фінансова історія чиста. Ви законослухняний громадянин!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-[10px] text-text-dim uppercase font-black tracking-widest">Виберіть штраф для оплати:</p>
+                    <div className="grid gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                      {fines.map(fine => (
+                        <button
+                          key={fine.id}
+                          onClick={() => setSelectedFine(fine)}
+                          className={`w-full p-4 rounded-2xl border transition-all text-left ${
+                            selectedFine?.id === fine.id 
+                              ? 'bg-red-500/10 border-red-500/30' 
+                              : 'bg-white/5 border-white/5 hover:bg-white/10'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                             <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">₴{fine.amount.toLocaleString()}</p>
+                             <div className="flex items-center gap-1 text-[8px] text-text-dim">
+                               <Calendar className="w-2.5 h-2.5" />
+                               {new Date(fine.deadline).toLocaleDateString()}
+                             </div>
+                          </div>
+                          <p className="text-xs font-bold text-white mb-1">{fine.reason}</p>
+                          <p className="text-[9px] text-text-dim">Виписано: {new Date(fine.issuedAt?.seconds ? fine.issuedAt.seconds * 1000 : fine.issuedAt).toLocaleString()}</p>
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedFine && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="space-y-4 pt-2 border-t border-white/5"
+                      >
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-text-dim uppercase tracking-widest px-1">Виберіть карту для оплати</label>
+                          <select 
+                            value={selectedCardId}
+                            onChange={(e) => setSelectedCardId(e.target.value)}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-red-500/50"
+                          >
+                            <option value="">Оберіть карту...</option>
+                            {profile.bankCards?.map((c: any) => (
+                              <option key={c.number} value={c.number}>
+                                {c.label} (₴{c.balance.toLocaleString()})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button 
+                          onClick={handlePayFine}
+                          disabled={isProcessing || !selectedCardId}
+                          className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase text-xs tracking-widest rounded-2xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
+                        >
+                          {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <>Оплатити ₴{selectedFine.amount.toLocaleString()}</>}
+                        </button>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+              </div>
             </motion.div>
           </div>
         )}

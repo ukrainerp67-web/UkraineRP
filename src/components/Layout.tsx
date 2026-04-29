@@ -46,8 +46,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
 
   useEffect(() => {
     if (isGovLeader) {
-      const unsubscribe = backend.onBudgetUpdate((amount) => {
-        setBudget(amount);
+      const unsubscribe = backend.onGlobalStateUpdate((state) => {
+        setBudget(state.budget || 0);
       });
       return () => unsubscribe();
     }

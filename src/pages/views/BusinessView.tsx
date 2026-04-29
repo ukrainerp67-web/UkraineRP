@@ -16,13 +16,10 @@ export const BusinessView: React.FC = () => {
   const [collectingBusiness, setCollectingBusiness] = useState<any | null>(null);
 
   useEffect(() => {
-    const fetchBudget = async () => {
-      const b = await backend.getBudget();
-      setBudget(b || 0);
-    };
-    fetchBudget();
-    const interval = setInterval(fetchBudget, 10000);
-    return () => clearInterval(interval);
+    const unsubscribe = backend.onGlobalStateUpdate((state) => {
+      setBudget(state.budget || 0);
+    });
+    return () => unsubscribe();
   }, []);
 
   const ownedBusinesses = profile?.businesses?.map(b => {

@@ -108,31 +108,77 @@ class BackendService {
     }
   }
 
-  async getBudget() {
+  async getGlobalState() {
     try {
-      const docRef = doc(db, 'system', 'budget');
+      const docRef = doc(db, 'system', 'global');
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        return docSnap.data().amount || 0;
+        return docSnap.data();
       }
-      return 0;
+      // Initialize if not exists
+      const initialState = {
+        budget: 1000000,
+        taxRate: 0.20,
+        trustRating: 60,
+        updatedAt: serverTimestamp()
+      };
+      await setDoc(docRef, initialState);
+      return initialState;
     } catch (error) {
-      console.error('Error getting budget:', error);
-      return 0;
+      console.error('Error getting global state:', error);
+      return { budget: 1000000, taxRate: 0.20, trustRating: 60 };
     }
   }
 
-  onBudgetUpdate(callback: (amount: number) => void) {
-    const docRef = doc(db, 'system', 'budget');
+  onGlobalStateUpdate(callback: (state: any) => void) {
+    const docRef = doc(db, 'system', 'global');
     return onSnapshot(docRef, (doc) => {
       if (doc.exists()) {
-        callback(doc.data().amount || 0);
+        callback(doc.data());
       } else {
-        callback(0);
+        // Fallback or trigger first get
+        this.getGlobalState().then(callback);
       }
     }, (error) => {
-      console.error("Budget snapshot error", error);
+      console.error("Global state snapshot error", error);
     });
+  }
+
+  async updateGlobalState(updates: any) {
+    try {
+      const docRef = doc(db, 'system', 'global');
+      await setDoc(docRef, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating global state:', error);
+      return { success: false, error };
+    }
+  }
+
+  async addToBudget(amount: number) {
+    try {
+      const globalState = await this.getGlobalState();
+      await this.updateGlobalState({ budget: (globalState.budget || 0) + amount });
+      return { success: true };
+    } catch (error) {
+      console.error('Error adding to budget:', error);
+      return { success: false, error };
+    }
+  }
+
+  async removeFromBudget(amount: number) {
+    try {
+      const globalState = await this.getGlobalState();
+      if ((globalState.budget || 0) < amount) throw new Error('Недостатньо коштів у бюджеті');
+      await this.updateGlobalState({ budget: (globalState.budget || 0) - amount });
+      return { success: true };
+    } catch (error) {
+      console.error('Error removing from budget:', error);
+      return { success: false, error };
+    }
   }
 
   async logEvent(event: { type: string; message: string; player: string }) {
@@ -157,44 +203,126 @@ class BackendService {
     });
   }
 
-  async addToBudget(amount: number) {
+  async applyVeto(adminId: string, action: string) {
     try {
-      const docRef = doc(db, 'system', 'budget');
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        await updateDoc(docRef, {
-          amount: (docSnap.data().amount || 0) + amount,
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        await setDoc(docRef, {
-          amount: amount,
-          updatedAt: serverTimestamp()
-        });
-      }
+      const globalState = await this.getGlobalState();
+      await this.logEvent({
+        type: 'veto',
+        message: `Президент застосував ВЕТО до дії: "${action}"`,
+        player: adminId
+      });
+      // Logic for veto can be complex, for now we log it and maybe revert a budget change if possible
       return { success: true };
     } catch (error) {
-      console.error('Error updating budget:', error);
       return { success: false, error };
     }
   }
 
-  async removeFromBudget(amount: number) {
+  async setTaxRate(adminId: string, newRate: number) {
+    if (newRate < 0 || newRate > 0.5) return { success: false, message: 'Податок має бути від 0% до 50%' };
     try {
-      const docRef = doc(db, 'system', 'budget');
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const currentAmount = docSnap.data().amount || 0;
-        if (currentAmount < amount) throw new Error('Недостатньо коштів у бюджеті');
-        await updateDoc(docRef, {
-          amount: currentAmount - amount,
+      await this.updateGlobalState({ taxRate: newRate });
+      await this.logEvent({
+        type: 'tax_change',
+        message: `Міністр фінансів встановив новий податок: ${(newRate * 100).toFixed(0)}%`,
+        player: adminId
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async updateTrustRating(change: number) {
+    try {
+      const globalState = await this.getGlobalState();
+      let newRating = (globalState.trustRating || 60) + change;
+      newRating = Math.max(0, Math.min(100, newRating));
+      await this.updateGlobalState({ trustRating: newRating });
+      return { success: true, newRating };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async businessRaid(adminId: string) {
+    try {
+      const amount = Math.floor(Math.random() * 40000) + 10000;
+      const globalState = await this.getGlobalState();
+      await this.updateGlobalState({ 
+        budget: (globalState.budget || 0) + amount,
+        trustRating: (globalState.trustRating || 60) - 10
+      });
+      await this.logEvent({
+        type: 'raid',
+        message: `Податкова провела рейд на бізнес! До бюджету зараховано ₴${amount.toLocaleString()}. Рейтинг довіри впав.`,
+        player: adminId
+      });
+      return { success: true, amount };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async auditUser(adminId: string, targetId: string) {
+    try {
+      const target = await this.getProfile(targetId);
+      if (!target) return { success: false, message: 'Ціль не знайдена' };
+      
+      const isCorrupt = Math.random() < 0.3;
+      const report = isCorrupt 
+        ? `ВФБ виявило незадекларовані доходи у розмірі ₴${(Math.floor(Math.random() * 50000) + 10000).toLocaleString()}!` 
+        : 'Аудит не виявив порушень.';
+
+      await this.logEvent({
+        type: 'audit',
+        message: `Аудит гравця ${target.firstName} ${target.lastName}: ${report}`,
+        player: adminId
+      });
+      
+      return { success: true, isCorrupt, report };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  async applyBonusOrPenalty(adminId: string, targetId: string, amount: number, reason: string) {
+    try {
+      const target = await this.getProfile(targetId);
+      if (!target) return { success: false, message: 'Ціль не знайдена' };
+
+      const bankCards = [...(target.bankCards || [])];
+      let cardIdx = bankCards.findIndex(c => c.type === 'standard');
+      if (cardIdx === -1 && bankCards.length > 0) cardIdx = 0;
+
+      if (cardIdx !== -1) {
+        bankCards[cardIdx].balance = (Number(bankCards[cardIdx].balance) || 0) + amount;
+        await updateDoc(doc(db, 'users', targetId), { 
+          bankCards,
+          updatedAt: serverTimestamp() 
+        });
+      } else {
+        await updateDoc(doc(db, 'users', targetId), { 
+          balance: (Number(target.balance) || 0) + amount,
           updatedAt: serverTimestamp()
         });
-        return { success: true };
       }
-      throw new Error('Бюджет не знайдено');
+
+      const typeStr = amount >= 0 ? 'ПРЕМІЮ' : 'ШТРАФ';
+      await this.sendNotification(targetId, {
+        title: `💰 ${typeStr}`,
+        message: `Вам призначено ${typeStr.toLowerCase()} у розмірі ₴${Math.abs(amount).toLocaleString()}. Причина: ${reason}`,
+        type: amount >= 0 ? 'success' : 'error'
+      });
+
+      await this.logEvent({
+        type: 'financial_action',
+        message: `${adminId} призначив ${typeStr.toLowerCase()} гравцю ${target.firstName} на суму ₴${Math.abs(amount).toLocaleString()}. Причина: ${reason}`,
+        player: adminId
+      });
+
+      return { success: true };
     } catch (error) {
-      console.error('Error removing from budget:', error);
       return { success: false, error };
     }
   }
@@ -214,7 +342,6 @@ class BackendService {
         "Прем'єр-міністр": 8500,
         "Прем'єр Міністр": 8500,
         "Прем'єр міністр": 8500,
-        "Прем'єр-міністр": 8500,
         'Міністр фінансів': 7000,
         'Працівник ВФБ': 4000,
         'Депутат': 5000,
@@ -232,7 +359,11 @@ class BackendService {
       }
 
       const gross = salaryRates[role] || 2000; // Base for others
-      const taxRate = 0.20;
+      
+      // Get dynamic tax rate from global state
+      const globalState = await this.getGlobalState();
+      const taxRate = globalState.taxRate || 0.20;
+      
       const taxAmount = Math.floor(gross * taxRate);
       const netAmount = gross - taxAmount;
 
@@ -262,25 +393,19 @@ class BackendService {
         updatedAt: serverTimestamp()
       });
 
-      // 2. Update Budget (Taxes go to budget)
-      const budgetRef = doc(db, 'system', 'budget');
-      const budgetSnap = await getDoc(budgetRef);
-      const currentBudget = budgetSnap.exists() ? (budgetSnap.data().amount || 0) : 0;
-      
-      await setDoc(budgetRef, {
-        amount: currentBudget + taxAmount,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      // 2. Update Budget (Taxes go to global budget)
+      const newBudget = (globalState.budget || 0) + taxAmount;
+      await this.updateGlobalState({ budget: newBudget });
 
       // 3. Send Official Notification Report
       const report = `🏦 Банк: Нарахування заробітної плати
 Ви отримали зарплату за останні 15 хвилин роботи.
 • Посада: ${role}
 • Нараховано: ${gross.toLocaleString()} ₴
-• Стягнуто податків (20% до Держбюджету): ${taxAmount.toLocaleString()} ₴
+• Стягнуто податків (${(taxRate * 100).toFixed(0)}% до Держбюджету): ${taxAmount.toLocaleString()} ₴
 • Зараховано на рахунок: ${netAmount.toLocaleString()} ₴
 Ваш поточний баланс: ${updatedCards[cardIndex]?.balance?.toLocaleString() || (data.balance + netAmount).toLocaleString()} ₴
-Баланс Державного бюджету: ${(currentBudget + taxAmount).toLocaleString()} ₴`;
+Баланс Державного бюджету: ${newBudget.toLocaleString()} ₴`;
 
       await this.sendNotification(userId, {
         title: '💰 PayDay: Зарплата',
@@ -376,19 +501,19 @@ class BackendService {
       const totalCost = count * amountPerPlayer;
       
       // Atomic budget check and subtraction in the same batch (via getDoc first then batch.update)
-      const budgetRef = doc(db, 'system', 'budget');
+      const budgetRef = doc(db, 'system', 'global');
       const budgetSnap = await getDoc(budgetRef);
       
-      if (!budgetSnap.exists()) return { success: false, error: { message: 'Бюджет не знайдено' } };
+      if (!budgetSnap.exists()) return { success: false, error: { message: 'Глобальний стан не знайдено' } };
       
-      const currentBudget = budgetSnap.data().amount || 0;
+      const currentBudget = budgetSnap.data().budget || 0;
       if (currentBudget < totalCost) {
         return { success: false, error: { message: `Недостатньо коштів у бюджеті! Текучий бюджет: ₴${currentBudget.toLocaleString()}, необхідно: ₴${totalCost.toLocaleString()}` } };
       }
 
       // Add budget update to the batch
       batch.update(budgetRef, {
-        amount: currentBudget - totalCost,
+        budget: currentBudget - totalCost,
         updatedAt: serverTimestamp()
       });
 

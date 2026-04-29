@@ -9,6 +9,21 @@ export const PayDaySystem: React.FC = () => {
     useEffect(() => {
         if (!profile) return;
 
+        const checkGlobalState = async () => {
+            const state = await backend.getGlobalState();
+            if (state.trustRating < 20) {
+                // Maidan logic or blocking - we'll just show a global warning for now
+                console.warn("МАЙДАН: Рейтинг довіри критично низький!");
+            }
+        };
+
+        checkGlobalState();
+        const stateUnsub = backend.onGlobalStateUpdate((state) => {
+            if (state.trustRating < 20) {
+                // Logic to block payments could be here
+            }
+        });
+
         const syncTimer = () => {
             const lastPayDay = profile.lastPayDay ? (profile.lastPayDay.toMillis ? profile.lastPayDay.toMillis() : new Date(profile.lastPayDay).getTime()) : 0;
             const now = Date.now();
@@ -23,19 +38,29 @@ export const PayDaySystem: React.FC = () => {
         syncTimer();
 
         const interval = setInterval(() => {
-            // ONLY tick if the page is visible (player is active in game)
             if (document.visibilityState !== 'visible') return;
 
             setTimeLeft(prev => {
                 if (prev <= 0) {
-                    backend.triggerPayDay(profile.uid);
-                    return 15 * 60; // Reset timer
+                    // Check rating before paying
+                    backend.getGlobalState().then(state => {
+                        if (state.trustRating >= 20) {
+                             backend.triggerPayDay(profile.uid);
+                        } else {
+                             backend.sendNotification(profile.uid, {
+                                title: '❌ Виплата заблокована',
+                                message: 'Через критично низький рейтинг довіри (Майдан), виплати зарплат тимчасово призупинено!',
+                                type: 'error'
+                             });
+                        }
+                    });
+                    
+                    return 15 * 60; 
                 }
                 return prev - 1;
             });
         }, 1000);
 
-        // Re-sync timer when tab becomes visible again
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 syncTimer();
@@ -46,6 +71,7 @@ export const PayDaySystem: React.FC = () => {
 
         return () => {
             clearInterval(interval);
+            stateUnsub();
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [profile?.uid, profile?.lastPayDay]);

@@ -80,6 +80,12 @@ export const ChatView: React.FC = () => {
 
     backend.sendMessage(messageData);
     setNewMessage('');
+    
+    // Trigger GM AI processing
+    import('../../services/gameMasterService').then(({ gmService }) => {
+      gmService.processMessage(newMessage, profile);
+    });
+
     setTimeout(scrollToBottom, 50);
   }, [newMessage, profile, privateRecipient]);
 
@@ -216,6 +222,7 @@ export const ChatView: React.FC = () => {
                     {msg.senderName}
                   </button>
                   {isPrivate && <span className="text-[7px] bg-red-500/20 text-red-400 px-1 rounded border border-red-500/20">PRIVATE</span>}
+                  {msg.isBot && <span className="text-[7px] bg-ukraine-blue/20 text-ukraine-blue px-1 rounded border border-ukraine-blue/20 font-black">AI GM</span>}
                 </div>
                 <div 
                   className={`px-3 md:px-4 py-2 md:py-2.5 rounded-xl md:rounded-2xl text-[10px] md:text-xs leading-relaxed shadow-md relative group/msg ${

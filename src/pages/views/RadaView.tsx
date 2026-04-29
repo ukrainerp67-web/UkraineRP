@@ -6,7 +6,15 @@ import { backend } from '../../services/backendService';
 
 export const RadaView: React.FC = () => {
   const { profile } = useAuth();
-  const [budget, setBudget] = useState<number>(0);
+  const [countryState, setCountryState] = useState<any>(null);
+  
+  useEffect(() => {
+    const unsubscribe = backend.onGlobalStateUpdate((state) => {
+      setCountryState(state);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const isSuperAdmin = profile?.email === 'ukrainerp67@gmail.com';
   const canJoin = isSuperAdmin || (profile && profile.socialRating >= 15);
 
@@ -21,15 +29,6 @@ export const RadaView: React.FC = () => {
   const isInGov = isGovLeader || 
                   profile?.role === 'Депутат' || 
                   profile?.role === 'Працівник ВФБ';
-
-  useEffect(() => {
-    if (isGovLeader) {
-      const unsubscribe = backend.onBudgetUpdate((amount) => {
-        setBudget(amount);
-      });
-      return () => unsubscribe();
-    }
-  }, [isGovLeader]);
 
   const [supportAmount, setSupportAmount] = useState(1000);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -69,13 +68,33 @@ export const RadaView: React.FC = () => {
             <p className="text-blue-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mt-2 underline decoration-yellow-400 underline-offset-4">Законотворчість та Розбудова</p>
           </div>
 
-          {isGovLeader && (
-            <div className="bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-md">
-               <div className="flex items-center gap-3 mb-1">
-                  <Landmark className="w-4 h-4 text-ukraine-blue" />
-                  <p className="text-[10px] font-black text-text-dim uppercase tracking-widest">Державний Бюджет</p>
+          {isGovLeader && countryState && (
+            <div className="flex flex-wrap gap-3 md:gap-4 justify-center sm:justify-end">
+               <div className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-xl md:rounded-2xl backdrop-blur-md min-w-[120px]">
+                  <div className="flex items-center gap-2 mb-1">
+                     <Landmark className="w-3.5 h-3.5 text-blue-400" />
+                     <p className="text-[8px] md:text-[9px] font-black text-text-dim uppercase tracking-widest">Держбюджет</p>
+                  </div>
+                  <p className="text-lg md:text-xl font-black text-white">₴{(countryState.budget || 0).toLocaleString()}</p>
                </div>
-               <p className="text-xl font-black text-white">₴{budget.toLocaleString()}</p>
+
+               <div className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-xl md:rounded-2xl backdrop-blur-md min-w-[100px]">
+                  <div className="flex items-center gap-2 mb-1">
+                     <ReceiptText className="w-3.5 h-3.5 text-yellow-400" />
+                     <p className="text-[8px] md:text-[9px] font-black text-text-dim uppercase tracking-widest">Податок</p>
+                  </div>
+                  <p className="text-lg md:text-xl font-black text-white">{((countryState.taxRate || 0) * 100).toFixed(0)}%</p>
+               </div>
+
+               <div className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-xl md:rounded-2xl backdrop-blur-md min-w-[100px]">
+                  <div className="flex items-center gap-2 mb-1">
+                     <Award className="w-3.5 h-3.5 text-green-400" />
+                     <p className="text-[8px] md:text-[9px] font-black text-text-dim uppercase tracking-widest">Довіра</p>
+                  </div>
+                  <p className={`text-lg md:text-xl font-black ${countryState.trustRating < 20 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                    {countryState.trustRating || 0}%
+                  </p>
+               </div>
             </div>
           )}
         </div>

@@ -29,7 +29,12 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'ukrainerp67@gmail.com' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') in ['admin', 'rada', 'banker', 'Президент', 'Депутат', 'Адмін', 'Прем\'єр міністр', 'Прем\'єр Міністр', 'Міністр фінансів', 'Прем\'єр-міністр']
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') in [
+          'admin', 'rada', 'banker', 'Адмін', 'Президент', 'Депутат',
+          'Прем\'єр міністр', 'Прем\'єр Міністр', 'Прем\'єр-міністр',
+          'Премʼєр міністр', 'Премʼєр Міністр', 'Премʼєр-міністр',
+          'Міністр фінансів', 'Міністр Фінансів'
+        ]
       );
     }
 
@@ -39,8 +44,13 @@ service cloud.firestore {
 
     function isGovernment() {
       return isSignedIn() && (
-        request.auth.token.email == 'ukrainerp67@gmail.com' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') in ['admin', 'rada', 'Президент', 'Депутат', 'Прем\'єр міністр', 'Прем\'єр Міністр', 'Міністр фінансів', 'Прем\'єр-міністр']
+        isSuperAdmin() ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') in [
+          'admin', 'rada', 'Президент', 'Депутат',
+          'Прем\'єр міністр', 'Прем\'єр Міністр', 'Прем\'єр-міністр',
+          'Премʼєр міністр', 'Премʼєр Міністр', 'Премʼєр-міністр',
+          'Міністр фінансів', 'Міністр Фінансів'
+        ]
       );
     }
 
@@ -56,7 +66,7 @@ service cloud.firestore {
       allow create: if isOwner(userId) || isSuperAdmin();
       allow update: if isSuperAdmin() || 
                     (isOwner(userId) && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'socialRating', 'isFrozen'])) ||
-                    (isAdmin() && existing().get('email', '') != 'ukrainerp67@gmail.com');
+                    (isAdmin() && (existing().get('email', '') != 'ukrainerp67@gmail.com' || incoming().diff(existing()).affectedKeys().hasOnly(['bankCards', 'updatedAt'])));
       allow delete: if isSuperAdmin();
     }
 

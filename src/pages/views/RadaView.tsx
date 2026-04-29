@@ -35,11 +35,6 @@ export const RadaView: React.FC = () => {
     if (!profile) return;
     const amount = type === 'support' ? supportAmount : Math.floor(supportAmount * 1.5);
     
-    if (budget < amount) {
-      alert('Недостатньо коштів у бюджеті!');
-      return;
-    }
-
     setLoadingAction(type);
     try {
       const res = await backend.distributeSocialSupport(amount, type) as any;

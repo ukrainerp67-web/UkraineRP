@@ -292,6 +292,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (snapshot.exists()) {
               let profileData = snapshot.data() as UserProfile;
               const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
+              
+              // --- MIGRATION: Old single card to array ---
+              if ((profileData as any).bankCard && !profileData.bankCards) {
+                  const oldCard = (profileData as any).bankCard;
+                  profileData.bankCards = [{
+                      type: oldCard.type || 'standard',
+                      number: oldCard.number || '0000 0000 0000 0000',
+                      balance: oldCard.balance || profileData.balance || 0,
+                      createdAt: oldCard.createdAt || new Date().toISOString(),
+                      passportId: oldCard.passportId || '',
+                      label: oldCard.label || 'Основна карта'
+                  }];
+                  // Update in DB to persist migration
+                  try {
+                    await updateDoc(doc(db, 'users', firebaseUser.uid), {
+                        bankCards: profileData.bankCards,
+                        updatedAt: serverTimestamp()
+                    });
+                  } catch (e) { console.warn("Migration failed", e); }
+              }
+              // ------------------------------------------
+
               if (isAdminEmail && profileData.role !== 'admin') {
                   try {
                     await updateDoc(doc(db, 'users', firebaseUser.uid), {

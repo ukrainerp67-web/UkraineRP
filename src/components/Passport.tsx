@@ -62,13 +62,13 @@ export const Passport: React.FC<PassportProps> = ({
           damping: 25,
           opacity: { duration: 0.5 }
         }}
-        className="relative w-full aspect-[1.58/1] max-w-[520px] mx-auto bg-gradient-to-br from-[#1a1c24] to-[#0a0b10] rounded-[1rem] md:rounded-[2rem] p-3 sm:p-5 md:p-6 lg:p-7 overflow-hidden border border-white/10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] preserve-3d cursor-pointer"
+        className="relative w-full aspect-[1.58/1] max-w-[520px] mx-auto bg-gradient-to-br from-[#1a1c24] to-[#0a0b10] rounded-[1rem] md:rounded-[2rem] p-3 md:p-6 lg:p-7 overflow-hidden border border-white/10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] preserve-3d cursor-pointer"
       >
         {/* Blue & Yellow Accents */}
         <div className="absolute top-0 right-0 w-24 md:w-64 h-24 md:h-64 bg-ukraine-blue/15 blur-[60px] md:blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2" />
         <div className="absolute bottom-0 left-0 w-24 md:w-64 h-24 md:h-64 bg-ukraine-yellow/10 blur-[60px] md:blur-[120px] rounded-full translate-y-1/2 -translate-x-1/2" />
 
-        <div className="relative z-10 flex flex-col h-full gap-1 md:gap-6 lg:gap-8">
+        <div className="relative z-10 flex flex-col h-full gap-2 md:gap-6 lg:gap-8">
           {/* Header */}
           <header className="flex justify-between items-start shrink-0">
             <div className="flex items-center gap-1 md:gap-4">

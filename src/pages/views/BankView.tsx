@@ -121,30 +121,30 @@ export const BankView: React.FC = () => {
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className={`w-full max-w-[320px] aspect-[1.58/1] rounded-2xl p-6 text-white relative shadow-2xl overflow-hidden bg-gradient-to-br ${cardData?.color || 'from-gray-700 to-gray-500'}`}
+        className={`w-full max-w-[320px] aspect-[1.58/1] rounded-2xl p-4 md:p-6 text-white relative shadow-2xl overflow-hidden bg-gradient-to-br ${cardData?.color || 'from-gray-700 to-gray-500'}`}
       >
         <div className="absolute top-0 right-0 p-4 opacity-20">
-          <Landmark className="w-20 h-20" />
+          <Landmark className="w-16 h-16 md:w-20 md:h-20" />
         </div>
-        <div className="relative z-10 flex flex-col h-full justify-between">
+        <div className="relative z-10 flex flex-col h-full justify-between gap-2">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[8px] font-black uppercase tracking-widest opacity-80">Національний Банк</p>
-              <p className="text-xs font-bold leading-tight">{card.label}</p>
+              <p className="text-[7px] md:text-[8px] font-black uppercase tracking-widest opacity-80">Національний Банк</p>
+              <p className="text-[10px] md:text-xs font-bold leading-tight">{card.label}</p>
             </div>
-            <span className="text-2xl">{cardData?.icon}</span>
+            <span className="text-xl md:text-2xl">{cardData?.icon}</span>
           </div>
           
-          <div>
-            <p className="text-sm font-mono tracking-widest mb-1">{card.number}</p>
-            <div className="flex justify-between items-end">
-              <div>
+          <div className="mt-auto">
+            <p className="text-xs md:text-sm font-mono tracking-widest mb-1 md:mb-2">{card.number}</p>
+            <div className="flex justify-between items-end gap-2">
+              <div className="flex-1 min-w-0">
                 <p className="text-[6px] font-bold uppercase opacity-60">Власник</p>
-                <p className="text-[10px] font-black uppercase tracking-tighter">{profile?.firstName} {profile?.lastName}</p>
+                <p className="text-[8px] md:text-[10px] font-black uppercase tracking-tighter truncate">{profile?.firstName} {profile?.lastName}</p>
               </div>
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <p className="text-[6px] font-bold uppercase opacity-60">Баланс</p>
-                <p className="text-xs font-black">₴{card.balance?.toLocaleString() || 0}</p>
+                <p className="text-[10px] md:text-xs font-black">₴{card.balance?.toLocaleString() || 0}</p>
               </div>
             </div>
           </div>

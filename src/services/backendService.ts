@@ -51,14 +51,14 @@ class BackendService {
           status: 'online'
         }, { merge: true });
 
-        // Listen for players
-        this.presenceUnsubscribe = onSnapshot(collection(db, 'presence'), (snapshot) => {
-      const players = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Listen for all players from users collection to recover "disappeared" data
+        this.presenceUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+          const players = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           if (this.playersUpdateCallback) {
             this.playersUpdateCallback(players);
           }
         }, (error) => {
-          console.warn("Presence snapshot error - likely unauth", error);
+          console.warn("Presence snapshot error", error);
         });
       } else {
         if (this.presenceUnsubscribe) {
@@ -201,9 +201,8 @@ class BackendService {
 
   async distributeSocialSupport(amountPerPlayer: number, type: 'support' | 'pension' = 'support') {
     try {
-      const { collection, getDocs, writeBatch, doc } = await import('firebase/firestore');
+      const { collection, getDocs, writeBatch, doc, getDoc } = await import('firebase/firestore');
       const usersRef = collection(db, 'users');
-      // We get all users and filter internally to respect the bank card requirement
       const querySnapshot = await getDocs(usersRef);
       
       if (querySnapshot.empty) return { success: true, count: 0 };
@@ -214,51 +213,78 @@ class BackendService {
 
       querySnapshot.forEach((userDoc) => {
         const data = userDoc.data();
-        // Check if user has the correct bank card in their bankCards array
+        let cardIndex = -1;
+        let updatedCards = [];
+
+        // Check for new array format
         if (data.bankCards && Array.isArray(data.bankCards)) {
-          const cardIndex = data.bankCards.findIndex((c: any) => c.type === targetCardType);
+          cardIndex = data.bankCards.findIndex((c: any) => c.type === targetCardType);
+          updatedCards = [...data.bankCards];
+        } 
+        // Fallback for legacy single card format
+        else if (data.bankCard && data.bankCard.type === targetCardType) {
+          cardIndex = 0;
+          updatedCards = [data.bankCard];
+        }
+        
+        if (cardIndex !== -1) {
+          const userRef = userDoc.ref;
+          updatedCards[cardIndex] = {
+            ...updatedCards[cardIndex],
+            balance: (Number(updatedCards[cardIndex].balance) || 0) + amountPerPlayer
+          };
           
-          if (cardIndex !== -1) {
-            const userRef = userDoc.ref;
-            const updatedCards = [...data.bankCards];
-            updatedCards[cardIndex] = {
-              ...updatedCards[cardIndex],
-              balance: (updatedCards[cardIndex].balance || 0) + amountPerPlayer
-            };
-            
-            batch.update(userRef, {
-              bankCards: updatedCards,
-              updatedAt: serverTimestamp()
-            });
+          const updates: any = {
+            bankCards: updatedCards,
+            updatedAt: serverTimestamp()
+          };
+          
+          if (data.bankCard) updates.bankCard = null; // Cleanup legacy field
+          
+          batch.update(userRef, updates);
 
-            // Add notification for the user
-            const notificationRef = doc(collection(db, 'notifications'));
-            batch.set(notificationRef, {
-              userId: userDoc.id,
-              title: targetCardType === 'e-support' ? 'Є-Підтримка 🇺🇦' : 'Пенсійний Фонд 🎖️',
-              message: `На вашу карту ${targetCardType === 'e-support' ? 'Є-Підтримка' : 'Пенсійна'} зараховано державну виплату у розмірі ₴${amountPerPlayer.toLocaleString()}`,
-              type: 'success',
-              read: false,
-              createdAt: serverTimestamp()
-            });
+          // Add notification for the user
+          const notificationRef = doc(collection(db, 'notifications'));
+          batch.set(notificationRef, {
+            userId: userDoc.id,
+            title: targetCardType === 'e-support' ? 'Є-Підтримка 🇺🇦' : 'Пенсійний Фонд 🎖️',
+            message: `На вашу карту ${targetCardType === 'e-support' ? 'Є-Підтримка' : 'Пенсійна'} зараховано державну виплату у розмірі ₴${amountPerPlayer.toLocaleString()}`,
+            type: 'success',
+            read: false,
+            createdAt: serverTimestamp()
+          });
 
-            count++;
-          }
+          count++;
         }
       });
 
       if (count === 0) return { success: true, count: 0, message: 'Немає громадян з відповідними картами для виплати' };
 
       const totalCost = count * amountPerPlayer;
-      const budgetResult = await this.removeFromBudget(totalCost);
       
-      if (!budgetResult.success) return budgetResult;
+      // Atomic budget check and subtraction in the same batch (via getDoc first then batch.update)
+      const budgetRef = doc(db, 'system', 'budget');
+      const budgetSnap = await getDoc(budgetRef);
+      
+      if (!budgetSnap.exists()) return { success: false, error: { message: 'Бюджет не знайдено' } };
+      
+      const currentBudget = budgetSnap.data().amount || 0;
+      if (currentBudget < totalCost) {
+        return { success: false, error: { message: `Недостатньо коштів у бюджеті! Текучий бюджет: ₴${currentBudget.toLocaleString()}, необхідно: ₴${totalCost.toLocaleString()}` } };
+      }
 
+      // Add budget update to the batch
+      batch.update(budgetRef, {
+        amount: currentBudget - totalCost,
+        updatedAt: serverTimestamp()
+      });
+
+      // Commit everything
       await batch.commit();
       return { success: true, count };
     } catch (error) {
       console.error('Error distributing social support:', error);
-      return { success: false, error };
+      return { success: false, error: error instanceof Error ? error : { message: String(error) } };
     }
   }
 

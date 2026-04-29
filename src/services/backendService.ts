@@ -1,4 +1,3 @@
-import { io, Socket } from "socket.io-client";
 import { 
   auth, 
   db, 
@@ -30,7 +29,6 @@ import {
 } from 'firebase/firestore';
 
 class BackendService {
-  private socket: Socket | null = null;
   private playersUpdateCallback: ((players: any[]) => void) | null = null;
   private messageCallback: ((msg: any) => void) | null = null;
 
@@ -38,12 +36,7 @@ class BackendService {
   private messagesUnsubscribe: (() => void) | null = null;
 
   constructor() {
-    // Keep socket for real-time chat if needed
-    try {
-      this.socket = io(window.location.origin);
-    } catch (e) {
-      console.warn("Socket.io initialization failed");
-    }
+    // We are now using Firebase for all real-time features
   }
 
   private setupPresence() {
@@ -623,7 +616,7 @@ class BackendService {
   }
 
   joinGame(playerData: any) {
-    this.socket?.emit("join", playerData);
+    // Presence is handled automatically in setupPresence
   }
 
   sendMessage(msg: any) {
@@ -635,7 +628,7 @@ class BackendService {
   }
 
   disconnect() {
-    this.socket?.disconnect();
+    // Cleanup handled in onPlayersUpdate return
   }
 }
 

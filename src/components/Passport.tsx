@@ -11,6 +11,7 @@ interface PassportProps {
   balance: number;
   signature: string;
   passportPhoto: string;
+  isVerified?: boolean;
   onPhotoClick?: () => void;
 }
 
@@ -23,6 +24,7 @@ export const Passport: React.FC<PassportProps> = ({
   balance,
   signature,
   passportPhoto,
+  isVerified,
   onPhotoClick
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -132,7 +134,11 @@ export const Passport: React.FC<PassportProps> = ({
               {/* Fields Grid */}
               <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 md:gap-y-4 flex-1">
                 <DataField label="ПРІЗВИЩЕ" value={lastName.toUpperCase()} />
-                <DataField label="ІМ'Я" value={firstName.toUpperCase()} />
+                <DataField 
+                  label="ІМ'Я" 
+                  value={firstName.toUpperCase()} 
+                  addon={isVerified ? <CheckCircle2 className="w-2.5 md:w-4 h-2.5 md:h-4 text-ukraine-blue" /> : undefined}
+                />
                 <DataField label="ДАТА РЕЄСТРАЦІЇ" value={birthDate} />
                 <DataField 
                   label="ID ДОКУМЕНТА" 
@@ -183,13 +189,14 @@ export const Passport: React.FC<PassportProps> = ({
     );
   };
 
-const DataField = ({ label, value, isHighlight, onCopy, isCopied }: { label: string, value: string, isHighlight?: boolean, onCopy?: (e: any) => void, isCopied?: boolean }) => (
+const DataField = ({ label, value, isHighlight, onCopy, isCopied, addon }: { label: string, value: string, isHighlight?: boolean, onCopy?: (e: any) => void, isCopied?: boolean, addon?: React.ReactNode }) => (
   <div className="flex flex-col min-w-0 relative group/field">
     <span className="text-[6px] md:text-[8px] font-black text-text-muted uppercase tracking-widest mb-0.5 md:mb-1">{label}</span>
     <div className="flex items-center gap-2">
       <span className={`text-[10px] md:text-sm font-black uppercase tracking-tight truncate leading-none ${isHighlight ? 'text-ukraine-blue' : 'text-[#E0E0E0]'}`}>
         {value || '---'}
       </span>
+      {addon}
       {onCopy && (
         <button 
           onClick={onCopy}

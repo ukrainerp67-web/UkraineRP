@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { auth, db } from '../../firebase';
-import { deleteDoc, doc } from 'firebase/firestore';
+import { auth } from '../../firebase';
+import { backend } from '../../services/backendService';
 import { LogOut, Trash2, Volume2, Monitor, Settings } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -14,7 +14,7 @@ export const SettingsView: React.FC = () => {
     const confirm = window.confirm('Ви впевнені, що хочете видалити акаунт? Цю дію неможливо скасувати.');
     if (confirm) {
       try {
-        await deleteDoc(doc(db, 'users', profile.uid));
+        await backend.deleteProfile(profile.uid);
         await auth.currentUser?.delete();
       } catch (error) {
         console.error('Error deleting account', error);

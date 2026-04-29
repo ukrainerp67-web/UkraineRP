@@ -3,8 +3,6 @@ import { motion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle, ShieldAlert, TrendingUp, HandCoins, UserSearch, Ban, FileWarning, Wallet, Lock } from 'lucide-react';
 import { backend } from '../../services/backendService';
-import { collection, query, getDocs, limit } from 'firebase/firestore';
-import { db } from '../../firebase';
 
 export const RadaView: React.FC = () => {
   const { profile } = useAuth();
@@ -64,10 +62,7 @@ export const RadaView: React.FC = () => {
 
     const fetchPlayers = async () => {
        try {
-         const usersRef = collection(db, 'users');
-         const q = query(usersRef, limit(20));
-         const snapshot = await getDocs(q);
-         const playersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+         const playersList = await backend.searchUsers('');
          setPlayers(playersList);
        } catch (err) {
          console.error("Error fetching players", err);

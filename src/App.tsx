@@ -15,24 +15,6 @@ const AppContent: React.FC = () => {
       if (loading) setShowBypass(true);
     }, 10000); // 10 seconds timeout for very slow connections
 
-    // Test Firestore connectivity (non-blocking)
-    const testFirestore = async () => {
-      try {
-        const { doc, getDocFromServer } = await import('firebase/firestore');
-        const { db } = await import('./firebase');
-        // Use a timeout for the health check
-        const healthPromise = getDocFromServer(doc(db, '_health_', 'check'));
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
-        
-        await Promise.race([healthPromise, timeoutPromise]);
-        console.log("Firestore connection: OK");
-      } catch (e: any) {
-        console.warn("Firestore connectivity check failed:", e.message);
-        // Do NOT block the app by default unless loading is actually true for too long
-      }
-    };
-    testFirestore();
-
     return () => clearTimeout(timer);
   }, [loading]);
 

@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { backend } from '../services/backendService';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../firebase';
-import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { auth } from '../firebase';
 
 interface BankCard {
   type: 'e-support' | 'pension' | 'standard' | 'usd' | 'eur';
@@ -292,7 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let globalUnsubscribe: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("Auth state changed:", firebaseUser?.uid);
+      console.log("Auth State Changed: Firebase UID =", firebaseUser?.uid);
       // Cleanup previous subscriptions
       if (profileUnsubscribe) profileUnsubscribe();
       if (playersUnsubscribe) playersUnsubscribe();
@@ -300,7 +299,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         if (firebaseUser) {
-          // ... (existing logic)
           const authUser: AuthUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
@@ -316,76 +314,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           });
 
-          // 1. Profile real-time listener
-          profileUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
-            if (snapshot.exists()) {
-              let profileData = snapshot.data() as UserProfile;
-              const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
-              
-              // --- MIGRATION: Old single card to array ---
-              if ((profileData as any).bankCard && !profileData.bankCards) {
-                  const oldCard = (profileData as any).bankCard;
-                  profileData.bankCards = [{
-                      type: oldCard.type || 'standard',
-                      number: oldCard.number || '0000 0000 0000 0000',
-                      balance: oldCard.balance || profileData.balance || 0,
-                      createdAt: oldCard.createdAt || new Date().toISOString(),
-                      passportId: oldCard.passportId || '',
-                      label: oldCard.label || 'Основна карта'
-                  }];
-                  // Update in DB to persist migration
-                  try {
-                    await updateDoc(doc(db, 'users', firebaseUser.uid), {
-                        bankCards: profileData.bankCards,
-                        updatedAt: serverTimestamp()
-                    });
-                  } catch (e) { console.warn("Migration failed", e); }
-              }
-              // ------------------------------------------
+          // 1. Profile real-time polling replacement for onSnapshot
+          profileUnsubscribe = backend.onProfileUpdate(firebaseUser.uid, async (profileData) => {
+            console.log("AuthContext: Received profile data from backend:", profileData ? 'Found' : 'Null');
+            
+            // Set loading false once we've attempted to fetch the profile
+            setLoading(false);
 
-              if (isAdminEmail && profileData.role !== 'admin') {
-                  try {
-                    await updateDoc(doc(db, 'users', firebaseUser.uid), {
-                      role: 'admin',
-                      status: 'Головний Адмін',
-                      updatedAt: serverTimestamp()
-                    });
-                  } catch (error) {
-                    console.warn("Auto-admin promotion delayed", error);
-                  }
-              }
+            if (!profileData) {
+                return;
+            }
+            
+            const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
+            let needsUpdate = false;
+            const updates: any = {};
 
-              // Ensure data defaults
-              profileData = {
-                businesses: [],
-                taxDebt: 0,
-                ...profileData
-              };
+            // --- MIGRATION: Old single card to array ---
+            if ((profileData as any).bankCard && !profileData.bankCards) {
+                const oldCard = (profileData as any).bankCard;
+                profileData.bankCards = [{
+                    type: oldCard.type || 'standard',
+                    number: oldCard.number || '0000 0000 0000 0000',
+                    balance: oldCard.balance || profileData.balance || 0,
+                    createdAt: oldCard.createdAt || new Date().toISOString(),
+                    passportId: oldCard.passportId || '',
+                    label: oldCard.label || 'Основна карта'
+                }];
+                needsUpdate = true;
+                updates.bankCards = profileData.bankCards;
+                updates.bankCard = null; // Cleanup
+            }
 
-              // Super admin omni-privileges and immunity
-              if (isAdminEmail) {
+            if (isAdminEmail && (profileData.role !== 'admin' || !profileData.isVerified)) {
                 profileData.role = 'admin';
                 profileData.status = 'Головний Адмін';
-                profileData.isFrozen = false;
-                profileData.muteUntil = null;
-              }
-
-              setProfile(profileData);
-              
-              // Re-join game with presence
-              backend.joinGame({
-                uid: firebaseUser.uid,
-                name: `${profileData.firstName} ${profileData.lastName}`,
-                status: 'online'
-              });
-            } else {
-              const profileData = await backend.getProfile(firebaseUser.uid, firebaseUser);
-              if (profileData) setProfile(profileData as UserProfile);
-              else setProfile(null);
+                profileData.isVerified = true;
+                needsUpdate = true;
+                updates.role = 'admin';
+                updates.status = 'Головний Адмін';
+                updates.isVerified = true;
             }
-          }, (error) => {
-            console.error("Profile sync error:", error);
-            // Even if profile fails, we are "logged in" as auth user
+
+            if (needsUpdate) {
+               await backend.patchProfile(firebaseUser.uid, updates);
+            }
+
+            // Ensure data defaults
+            profileData = {
+              businesses: [],
+              taxDebt: 0,
+              ...profileData
+            };
+
+            // Super admin omni-privileges and immunity
+            if (isAdminEmail) {
+              profileData.role = 'admin';
+              profileData.status = 'Головний Адмін';
+              profileData.isFrozen = false;
+              profileData.muteUntil = null;
+              profileData.isVerified = true;
+            }
+
+            setProfile(profileData);
+            setLoading(false); // Successfully loaded profile
+            
+            // Re-join game with presence
+            backend.joinGame({
+              uid: firebaseUser.uid,
+              name: `${profileData.firstName} ${profileData.lastName}`,
+              status: 'online'
+            });
           });
 
           // 2. Global players listener
@@ -399,11 +397,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setOnlinePlayers([]);
           localStorage.removeItem("user");
           localStorage.removeItem("token");
+          setLoading(false); // Immediate for non-logged users
         }
       } catch (err) {
         console.error("Error in onAuthStateChanged wrapper:", err);
-      } finally {
-        setLoading(false);
+        setLoading(false); // Cleanup on error
       }
     });
 

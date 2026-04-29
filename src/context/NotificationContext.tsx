@@ -2,8 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, AlertCircle, TrendingUp, Wallet, Users, Info, X } from 'lucide-react';
-import { db } from '../firebase';
-import { collection, query, where, onSnapshot, orderBy, limit, addDoc, serverTimestamp, updateDoc, doc, writeBatch, getDocs, Timestamp } from 'firebase/firestore';
+import { backend } from '../services/backendService';
 
 export type NotificationType = 'info' | 'success' | 'error' | 'warning' | 'money' | 'work' | 'social';
 
@@ -44,68 +43,31 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (!profile?.uid) return;
 
-    const cleanupOldNotifications = async () => {
-      try {
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const q = query(
-          collection(db, 'notifications'),
-          where('userId', '==', profile.uid),
-          where('createdAt', '<', Timestamp.fromDate(twentyFourHoursAgo))
-        );
+    // Notifications are managed by the backend now
+    
+    // Check periodically for new notifications
+    const fetchNotifications = async () => {
+       try {
+         const res = await fetch(`/api/users/${profile.uid}/notifications`);
+         const newNotifs = await res.json();
+         
+         // Check for new unread notifications to show toast
+         const latest = newNotifs[0];
+         if (latest && !latest.read && (!notifications.length || latest.id !== notifications[0].id)) {
+           setActiveToast(latest);
+           setTimeout(() => setActiveToast(null), 5000);
+         }
 
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) return;
-
-        const batch = writeBatch(db);
-        snapshot.docs.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-        await batch.commit();
-      } catch (error) {
-        // Silently fail cleanup if index isn't ready or other error
-        console.warn('Notification cleanup skipped:', error);
-      }
+         setNotifications(newNotifs);
+       } catch (e) {
+         console.warn("Notification sync error", e);
+       }
     };
 
-    cleanupOldNotifications();
-    
-    // Cleanup every hour while stay in game
-    const interval = setInterval(cleanupOldNotifications, 60 * 60 * 1000);
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10000);
     return () => clearInterval(interval);
-  }, [profile?.uid]);
-
-  useEffect(() => {
-    if (!profile?.uid) return;
-
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', profile.uid),
-      where('createdAt', '>', Timestamp.fromDate(twentyFourHoursAgo)),
-      orderBy('createdAt', 'desc'),
-      limit(30)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newNotifs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Notification[];
-      
-      // Check for new unread notifications to show toast
-      const latest = newNotifs[0];
-      if (latest && !latest.read && (!notifications.length || latest.id !== notifications[0].id)) {
-        setActiveToast(latest);
-        setTimeout(() => setActiveToast(null), 5000);
-      }
-
-      setNotifications(newNotifs);
-    }, (error) => {
-      console.warn("Notification sync error:", error);
-    });
-
-    return () => unsubscribe();
-  }, [profile?.uid]);
+  }, [profile?.uid, notifications.length]);
 
   const sendNotification = async (
     userId: string, 
@@ -117,16 +79,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     actionData?: any
   ) => {
     try {
-      await addDoc(collection(db, 'notifications'), {
-        userId,
+      await backend.sendNotification(userId, {
         title,
         message,
-        type,
-        read: false,
-        createdAt: serverTimestamp(),
-        link: link || '',
-        actionType: actionType || null,
-        actionData: actionData || null
+        type
       });
     } catch (error) {
       console.error('Error sending notification:', error);
@@ -135,9 +91,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const markAsRead = async (notificationId: string) => {
     try {
-      await updateDoc(doc(db, 'notifications', notificationId), {
-        read: true
-      });
+      await fetch(`/api/notifications/${notificationId}/read`, { method: 'PATCH' });
+      setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
     } catch (error) {
       console.error('Error marking as read:', error);
     }
@@ -146,11 +101,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const markAllAsRead = async () => {
     if (!profile?.uid) return;
     try {
-      const batch = writeBatch(db);
-      notifications.filter(n => !n.read).forEach(n => {
-        batch.update(doc(db, 'notifications', n.id), { read: true });
-      });
-      await batch.commit();
+      const unread = notifications.filter(n => !n.read);
+      await Promise.all(unread.map(n => fetch(`/api/notifications/${n.id}/read`, { method: 'PATCH' })));
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     } catch (error) {
       console.error('Error marking all as read:', error);
     }

@@ -279,6 +279,7 @@ export const ProfileView: React.FC = () => {
                       balance={profile.balance}
                       signature={profile.signature}
                       passportPhoto={profile.passportPhoto}
+                      isVerified={profile.isVerified}
                       onPhotoClick={() => !isFrozen && setShowPhotoModal(true)}
                     />
                     {isFrozen && (
@@ -708,6 +709,7 @@ export const ProfileView: React.FC = () => {
                               balance={friendData.balance}
                               signature={friendData.signature}
                               passportPhoto={friendData.passportPhoto}
+                              isVerified={friendData.isVerified}
                             />
                           </div>
                           

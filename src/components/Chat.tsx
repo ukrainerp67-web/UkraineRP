@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
-import { MessageSquare, Send, Users } from 'lucide-react';
+import { MessageSquare, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { backend } from '../services/backendService';
 
 export const Chat: React.FC = () => {
   const { profile } = useAuth();
@@ -13,13 +12,19 @@ export const Chat: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'messages'), orderBy('timestamp', 'asc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMessages(msgs);
-      setTimeout(() => scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight), 100);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'messages', auth.currentUser);
+    // Initial fetch
+    fetch('/api/messages').then(res => res.json()).then(msgs => {
+        setMessages(msgs);
+        setTimeout(() => scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight), 100);
+    });
+
+    const unsubscribe = backend.onNewMessage((msg) => {
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        const newMsgs = [...prev, msg].sort((a, b) => a.id - b.id);
+        setTimeout(() => scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight), 100);
+        return newMsgs;
+      });
     });
     return () => unsubscribe();
   }, []);
@@ -29,15 +34,14 @@ export const Chat: React.FC = () => {
     if (!newMessage.trim() || !profile) return;
 
     try {
-      await addDoc(collection(db, 'messages'), {
+      backend.sendMessage({
         senderId: profile.uid,
         senderName: `${profile.firstName} ${profile.lastName}`,
         content: newMessage,
-        timestamp: serverTimestamp(),
       });
       setNewMessage('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'messages');
+      console.error("Chat send error", error);
     }
   };
 
@@ -61,7 +65,7 @@ export const Chat: React.FC = () => {
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
               <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E0E0E0]">Загальний чат</h3>
             </div>
-            <span className="text-[10px] text-text-dim font-mono tracking-tighter">MS: 16</span>
+            <span className="text-[10px] text-text-dim font-mono tracking-tighter">API: Connected</span>
           </div>
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">

@@ -72,34 +72,46 @@ export const AdminView: React.FC = () => {
       return;
     }
 
-    const isSuperAdmin = adminProfile.email === 'ukrainerp67@gmail.com';
-    const originalUser = users.find(u => u.uid === selectedUser.uid);
-    const roleChanged = selectedUser.role !== originalUser?.role;
+        const isSuperAdmin = adminProfile.email === 'ukrainerp67@gmail.com';
+        const originalUser = users.find(u => u.uid === selectedUser.uid);
+        const roleChanged = selectedUser.role !== originalUser?.role;
+        const verificationChanged = selectedUser.isVerified !== originalUser?.isVerified;
 
-    try {
-      const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
-      
-      const updateData: any = {
-        balance: balance,
-        socialRating: socialRating,
-      };
+        try {
+            const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
+            
+            const updateData: any = {
+                balance: balance,
+                socialRating: socialRating,
+                isVerified: !!selectedUser.isVerified
+            };
 
-      // Only allow super admin to change roles
-      if (isSuperAdmin && roleChanged) {
-        updateData.role = selectedUser.role;
-      }
+            // Only allow super admin to change roles
+            if (isSuperAdmin && roleChanged) {
+                updateData.role = selectedUser.role;
+            }
 
-      await backend.adminUpdateUser(selectedUser.uid, updateData, adminName);
+            await backend.adminUpdateUser(selectedUser.uid, updateData, adminName);
 
-      if (isSuperAdmin && roleChanged) {
-        await backend.sendNotification(selectedUser.uid, {
-          title: 'Оновлення статусу',
-          message: selectedUser.role === 'admin' 
-            ? 'Вітаємо в нашій команді! 🥳 Вас назначено адміністратором. Тепер ви один з нас!'
-            : 'На жаль... ви покинули пост адміністратора, дякуємо за ваш вклад!',
-          type: 'social'
-        });
-      }
+            if (isSuperAdmin && roleChanged) {
+                await backend.sendNotification(selectedUser.uid, {
+                    title: 'Оновлення статусу',
+                    message: selectedUser.role === 'admin' 
+                        ? 'Вітаємо в нашій команді! 🥳 Вас назначено адміністратором. Тепер ви один з нас!'
+                        : 'На жаль... ви покинули пост адміністратора, дякуємо за ваш вклад!',
+                    type: 'social'
+                });
+            }
+
+            if (verificationChanged) {
+                await backend.sendNotification(selectedUser.uid, {
+                    title: selectedUser.isVerified ? 'Акаунт верифіковано' : 'Статус верифікації змінено',
+                    message: selectedUser.isVerified 
+                        ? 'Ваш акаунт успішно пройшов верифікацію. Ви отримали офіційну відмітку!' 
+                        : 'Статус верифікації вашого акаунта було знято.',
+                    type: 'success'
+                });
+            }
 
       alert('Дані оновлено!');
       setIsEditing(false);
@@ -314,7 +326,10 @@ export const AdminView: React.FC = () => {
                         {user.passportPhoto ? <img src={user.passportPhoto} className="w-full h-full object-cover" /> : user.firstName[0]}
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-white">{user.firstName} {user.lastName}</div>
+                        <div className="text-xs font-bold text-white flex items-center gap-1">
+                          {user.firstName} {user.lastName}
+                          {user.isVerified && <BadgeCheck className="w-3 h-3 text-ukraine-blue" />}
+                        </div>
                         <div className="text-[10px] text-text-dim font-mono">{user.uid.slice(0, 8)}...</div>
                       </div>
                     </div>
@@ -437,6 +452,16 @@ export const AdminView: React.FC = () => {
                   onChange={(e) => setSelectedUser({...selectedUser, socialRating: e.target.value})}
                   className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
                 />
+              </div>
+              <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5">
+                <label className="text-[10px] font-black uppercase text-text-dim">Верифікація</label>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUser({...selectedUser, isVerified: !selectedUser.isVerified})}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedUser.isVerified ? 'bg-ukraine-blue text-white' : 'bg-white/10 text-text-dim'}`}
+                >
+                  {selectedUser.isVerified ? 'ВЕРИФІКОВАНО' : 'НІ'}
+                </button>
               </div>
               {adminProfile.email === 'ukrainerp67@gmail.com' && (
                 <div>

@@ -141,14 +141,14 @@ export const BankView: React.FC = () => {
 
           <div className="flex justify-between items-end gap-2 pb-2">
             <div className="flex-1 min-w-0">
-              <p className="text-[7px] md:text-[8px] font-bold uppercase opacity-70">Власник</p>
-              <p className="text-[10px] md:text-[11px] font-black uppercase tracking-tight truncate mt-0.5">
+              <p className="text-[10px] md:text-xs font-bold uppercase opacity-80 mb-1">Власник</p>
+              <p className="text-[14px] md:text-base font-black uppercase tracking-tight">
                 {profile?.firstName} {profile?.lastName}
               </p>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-[7px] md:text-[8px] font-bold uppercase opacity-70">Баланс</p>
-              <p className="text-[11px] md:text-sm font-black mt-0.5">
+              <p className="text-[10px] md:text-xs font-bold uppercase opacity-80 mb-1">Баланс</p>
+              <p className="text-[16px] md:text-xl font-black text-white whitespace-nowrap">
                 ₴{card.balance?.toLocaleString() || 0}
               </p>
             </div>

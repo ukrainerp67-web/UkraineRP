@@ -201,7 +201,7 @@ class BackendService {
 
   async distributeSocialSupport(amountPerPlayer: number, type: 'support' | 'pension' = 'support') {
     try {
-      const { collection, getDocs, writeBatch, doc, getDoc } = await import('firebase/firestore');
+      const { collection, getDocs, writeBatch, doc, getDoc, query, where, documentId } = await import('firebase/firestore');
       
       // 1. Get online user IDs from presence
       const presenceSnapshot = await getDocs(collection(db, 'presence'));
@@ -209,20 +209,27 @@ class BackendService {
       
       if (onlineUids.length === 0) return { success: true, count: 0, message: 'Немає гравців в мережі (онлайн)' };
 
-      // 2. Process only online users
+      // 2. Fetch only online users from the users collection
+      // Firestore 'in' query limit is 30, so we might need chunks if there are many online
+      let onlineUsers: any[] = [];
       const usersRef = collection(db, 'users');
-      const querySnapshot = await getDocs(usersRef);
+      
+      // Chunking for Firestore 'in' query limit (30)
+      for (let i = 0; i < onlineUids.length; i += 30) {
+        const chunk = onlineUids.slice(i, i + 30);
+        const q = query(usersRef, where(documentId(), 'in', chunk));
+        const snap = await getDocs(q);
+        onlineUsers = [...onlineUsers, ...snap.docs];
+      }
+
+      if (onlineUsers.length === 0) return { success: true, count: 0, message: 'Не знайдені профілі онлайн-гравців' };
       
       const targetCardType = type === 'support' ? 'e-support' : 'pension';
       let count = 0;
       const batch = writeBatch(db);
 
-      querySnapshot.forEach((userDoc) => {
+      onlineUsers.forEach((userDoc) => {
         const data = userDoc.data();
-        
-        // ONLY target online players as requested ("онлайн режим")
-        if (!onlineUids.includes(userDoc.id)) return;
-
         let cardIndex = -1;
         let updatedCards = [];
 
@@ -253,7 +260,7 @@ class BackendService {
           
           batch.update(userRef, updates);
 
-          // Add notification for the user
+          // Add notification
           const notificationRef = doc(collection(db, 'notifications'));
           batch.set(notificationRef, {
             userId: userDoc.id,

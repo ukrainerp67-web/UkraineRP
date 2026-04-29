@@ -29,8 +29,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'ukrainerp67@gmail.com' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         ['admin', 'rada', 'banker'].hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')]))
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'rada', 'banker', 'Президент', 'Депутат', 'Адмін']
       );
     }
 
@@ -40,9 +39,8 @@ service cloud.firestore {
 
     function isGovernment() {
       return isSignedIn() && (
-        isSuperAdmin() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         ['admin', 'rada'].hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')]))
+        request.auth.token.email == 'ukrainerp67@gmail.com' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'rada', 'Президент', 'Депутат', 'Прем\'єр Міністр', 'Міністр фінансів']
       );
     }
 
@@ -56,14 +54,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow get, list: if isSignedIn();
       allow create: if isOwner(userId) || isSuperAdmin();
-      allow update: if isSuperAdmin() || (
-        (isOwner(userId) || isAdmin()) && 
-        (existing().get('email', '') != 'ukrainerp67@gmail.com' || isSuperAdmin())
-      );
-      allow delete: if isSuperAdmin() || (
-        isAdmin() && 
-        existing().get('email', '') != 'ukrainerp67@gmail.com'
-      );
+      allow update: if isSuperAdmin() || 
+                    (isOwner(userId) && !incoming().diff(existing()).affectedKeys().hasAny(['role', 'socialRating', 'isFrozen'])) ||
+                    (isAdmin() && existing().get('email', '') != 'ukrainerp67@gmail.com');
+      allow delete: if isSuperAdmin();
     }
 
     // --- Message Rules ---
@@ -117,20 +111,10 @@ service cloud.firestore {
 
     // --- Notification Rules ---
     match /notifications/{notificationId} {
-      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && (isValidNotification(incoming()) || isAdmin());
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn(); // Basic check, data validated in app
       allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
-
-      function isValidNotification(data) {
-        return (data.userId == request.auth.uid || data.userId is string)
-          && (data.title == null || data.title is string)
-          && (data.message is string && data.message.size() <= 2000)
-          && (data.type == null || data.type is string)
-          && (data.read is bool)
-          && (data.createdAt == request.time || data.createdAt == null || data.updatedAt == request.time);
-      }
     }
 
     // --- Friend Request Rules ---

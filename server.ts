@@ -29,33 +29,16 @@ db.exec(`
     bankCards TEXT DEFAULT '[]',
     properties TEXT DEFAULT '[]',
     inventory TEXT DEFAULT '[]',
+    isFrozen INTEGER DEFAULT 0,
+    isVerified INTEGER DEFAULT 0,
+    freezeUntil TEXT,
+    freezeReason TEXT,
+    muteUntil TEXT,
     lastPayDay TEXT,
     createdAt TEXT,
     updatedAt TEXT
   );
-`);
 
-// Migration: Add columns if they don't exist
-try {
-    db.prepare("ALTER TABLE users ADD COLUMN sex TEXT").run();
-} catch (e) {}
-try {
-    db.prepare("ALTER TABLE users ADD COLUMN birthDate TEXT").run();
-} catch (e) {}
-try {
-    db.prepare("ALTER TABLE users ADD COLUMN passportPhoto TEXT").run();
-} catch (e) {}
-try {
-    db.prepare("ALTER TABLE users ADD COLUMN signature TEXT").run();
-} catch (e) {}
-try {
-    db.prepare("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Громадянин'").run();
-} catch (e) {}
-try {
-    db.prepare("ALTER TABLE users ADD COLUMN isVerified INTEGER DEFAULT 0").run();
-} catch (e) {}
-
-db.exec(`
   CREATE TABLE IF NOT EXISTS system_config (
     id TEXT PRIMARY KEY,
     budget INTEGER DEFAULT 1000000,
@@ -113,14 +96,73 @@ async function startServer() {
 
   // --- API Routes ---
 
-  // Auth & Profile
-  app.get('/api/profile/:uid', (req, res) => {
-    const uid = req.params.uid;
-    console.log(`[PROFILE] Fetching for UID: ${uid}`);
-    const user = db.prepare('SELECT * FROM users WHERE uid = ?').get(uid);
+  app.get('/api/profile/email/:email', (req, res) => {
+    const email = req.params.email;
+    console.log(`[PROFILE] Searching for email: ${email}`);
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     
     if (!user) {
-      console.log(`[PROFILE] User ${uid} NOT FOUND in database`);
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      ...user,
+      bankCards: JSON.parse(user.bankCards || '[]'),
+      businesses: JSON.parse(user.businesses || '[]'),
+      properties: JSON.parse(user.properties || '[]'),
+      inventory: JSON.parse(user.inventory || '[]'),
+      isFrozen: !!user.isFrozen,
+      isVerified: !!user.isVerified
+    });
+  });
+
+  // Diagnostics: Log all users on startup
+  const allUsers = db.prepare('SELECT uid, email, firstName, lastName FROM users').all();
+  console.log('=========================================');
+  console.log('[RECOVERY DIAGNOSTICS] Total Users:', allUsers.length);
+  allUsers.forEach(u => console.log(` >> USER: ${u.email} | ${u.firstName} ${u.lastName} | UID: ${u.uid}`));
+  console.log('=========================================');
+
+  // Auth & Profile
+  app.get('/api/admin/users', (req, res) => {
+    try {
+      const users = db.prepare('SELECT * FROM users').all();
+      res.json(users.map((u: any) => ({
+        ...u,
+        bankCards: JSON.parse(u.bankCards || '[]'),
+        businesses: JSON.parse(u.businesses || '[]'),
+        properties: JSON.parse(u.properties || '[]'),
+        inventory: JSON.parse(u.inventory || '[]'),
+        isFrozen: !!u.isFrozen,
+        isVerified: !!u.isVerified
+      })));
+    } catch (error: any) {
+      console.error('[ADMIN] Error fetching users:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/profile/:uid', (req, res) => {
+    const uid = req.params.uid;
+    const email = req.query.email as string;
+    console.log(`[PROFILE] Fetching uid=${uid}, email=${email}`);
+    
+    // 1. Try by UID
+    let user = db.prepare('SELECT * FROM users WHERE uid = ?').get(uid);
+    
+    // 2. If not found by UID but email provided, try by email and RELINK
+    if (!user && email) {
+      console.log(`[RECOVERY] Searching for orphaned account by email: ${email}`);
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (user) {
+        console.log(`[RECOVERY] Found orphaned user! Relinking ${email} from ${user.uid} to ${uid}`);
+        db.prepare('UPDATE users SET uid = ?, updatedAt = ? WHERE email = ?').run(uid, new Date().toISOString(), email);
+        // Fetch again to be sure
+        user = db.prepare('SELECT * FROM users WHERE uid = ?').get(uid);
+      }
+    }
+    
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
@@ -139,6 +181,15 @@ async function startServer() {
   app.post('/api/profile', (req, res) => {
     const { uid, email, firstName, lastName, sex, birthDate, passportPhoto, signature, role, status, balance, socialRating, bankCards, businesses, isVerified } = req.body;
     console.log(`[PROFILE] Creating/Updating user: ${uid} (${email})`);
+
+    // Check if email already belongs to another UID
+    const existingEmailUser = db.prepare('SELECT uid FROM users WHERE email = ? AND uid != ?').get(email, uid);
+    if (existingEmailUser) {
+        console.log(`[PROFILE] Conflict: Email ${email} already linked to UID ${existingEmailUser.uid}. Relinking to ${uid}...`);
+        db.prepare('UPDATE users SET uid = ?, updatedAt = ? WHERE email = ?').run(uid, new Date().toISOString(), email);
+        return res.json({ success: true, message: 'Profile relinked' });
+    }
+
     const now = new Date().toISOString();
     
     const stmt = db.prepare(`
@@ -194,6 +245,19 @@ async function startServer() {
 
     db.prepare(`UPDATE users SET ${setClause}, updatedAt = ? WHERE uid = ?`).run(...values);
     res.json({ success: true });
+  });
+
+  app.patch('/api/profile/:uid/relink', (req, res) => {
+    const { email } = req.body;
+    const newUid = req.params.uid;
+    console.log(`[PROFILE] Relinking user ${email} to new UID ${newUid}`);
+    try {
+      db.prepare('UPDATE users SET uid = ?, updatedAt = ? WHERE email = ?').run(newUid, new Date().toISOString(), email);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('[PROFILE] Relink error:', error.message);
+      res.status(500).json({ success: false, error: error.message });
+    }
   });
 
   // Global State
@@ -343,6 +407,21 @@ async function startServer() {
   });
 
   // Online Players
+  app.get('/api/users/search', (req, res) => {
+    const query = req.query.q as string;
+    if (!query || query.length < 2) return res.json([]);
+
+    const searchPattern = `%${query}%`;
+    const users = db.prepare(`
+      SELECT uid, firstName, lastName, passportPhoto, isVerified, balance, socialRating, role 
+      FROM users 
+      WHERE firstName LIKE ? OR lastName LIKE ? OR uid LIKE ?
+      LIMIT 20
+    `).all(searchPattern, searchPattern, searchPattern);
+
+    res.json(users);
+  });
+
   app.get('/api/online', (req, res) => {
     const online = db.prepare(`
       SELECT u.* FROM users u 

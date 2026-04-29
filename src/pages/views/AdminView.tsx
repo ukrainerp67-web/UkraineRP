@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Users, Shield, TrendingUp, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare, AlertTriangle, Clock, Snowflake, Lock } from 'lucide-react';
+import { Users, Shield, TrendingUp, Search, Edit3, Trash2, Crown, Activity, Database, MessageSquare, AlertTriangle, Clock, Snowflake, Lock, BadgeCheck } from 'lucide-react';
 import { backend } from '../../services/backendService';
 import { useAuth } from '../../context/AuthContext';
 

@@ -30,6 +30,7 @@ interface UserProfile {
   dailyTax?: number;
   lastTaxUpdate?: any;
   isFrozen?: boolean;
+  isVerified?: boolean;
   bankCards?: BankCard[];
   businesses?: {
     businessId: string;
@@ -71,6 +72,7 @@ interface AuthContextType {
   user: AuthUser | null;
   profile: UserProfile | null;
   loading: boolean;
+  isRecovering: boolean;
   onlinePlayers: OnlinePlayer[];
   refreshProfile: () => Promise<void>;
   login: (credentials: any) => Promise<any>;
@@ -105,13 +107,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [onlinePlayers, setOnlinePlayers] = useState<OnlinePlayer[]>([]);
   const [globalTaxRate, setGlobalTaxRate] = useState(0.20);
   const [globalBudget, setGlobalBudget] = useState(1000000);
 
   const refreshProfile = async () => {
     if (user) {
-      const data = await backend.getProfile(user.uid);
+      const data = await backend.getProfile(user.uid, user.email || undefined);
       if (data) {
         setProfile(data);
       }
@@ -132,7 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await backend.login(credentials);
     if (data.user) {
       handleSetUser(data.user);
-      const profileData = await backend.getProfile(data.user.uid);
+      const profileData = await backend.getProfile(data.user.uid, data.user.email || undefined);
       setProfile(profileData);
     }
     return data;
@@ -315,11 +318,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           // 1. Profile real-time polling replacement for onSnapshot
-          profileUnsubscribe = backend.onProfileUpdate(firebaseUser.uid, async (profileData) => {
+          profileUnsubscribe = backend.onProfileUpdate(firebaseUser.uid, firebaseUser.email, async (profileData) => {
             console.log("AuthContext: Received profile data from backend:", profileData ? 'Found' : 'Null');
             
             // Set loading false once we've attempted to fetch the profile
             setLoading(false);
+            setIsRecovering(false);
+
+            if (!profileData && firebaseUser.email === 'ukrainerp67@gmail.com') {
+                console.log("AuthContext: Admin profile not found, auto-creating...");
+                const adminProfile: UserProfile = {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email,
+                    firstName: 'Головний',
+                    lastName: 'Адмін',
+                    sex: 'M',
+                    birthDate: '1990-01-01',
+                    passportPhoto: '',
+                    signature: 'Admin',
+                    balance: 1000000,
+                    socialRating: 1000,
+                    status: 'Головний Адмін',
+                    role: 'admin',
+                    isVerified: true,
+                    bankCards: [{
+                        type: 'standard',
+                        number: 'ADMIN-CARD-0001',
+                        balance: 1000000,
+                        label: 'Держ Карта',
+                        createdAt: new Date().toISOString(),
+                        passportId: 'UA-000001'
+                    }]
+                };
+                backend.saveProfile(adminProfile).then(() => {
+                    setProfile(adminProfile);
+                    setLoading(false);
+                });
+                return;
+            }
 
             if (!profileData) {
                 return;
@@ -430,6 +466,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user, 
         profile, 
         loading, 
+        isRecovering,
         onlinePlayers, 
         refreshProfile, 
         login, 

@@ -7,23 +7,23 @@ import { Dashboard } from './pages/Dashboard';
 import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, isRecovering } = useAuth();
   const [showBypass, setShowBypass] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (loading) setShowBypass(true);
-    }, 10000); // 10 seconds timeout for very slow connections
+      if (loading || isRecovering) setShowBypass(true);
+    }, 15000); // 15 seconds for recovery
 
     return () => clearTimeout(timer);
-  }, [loading]);
+  }, [loading, isRecovering]);
 
-  if (loading && !showBypass) {
+  if ((loading || isRecovering) && !showBypass) {
     return (
       <div className="h-[100dvh] bg-[#0A0A0C] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-12 h-12 text-ukraine-blue animate-spin" />
         <p className="text-[10px] font-black uppercase tracking-[0.4em] text-text-muted animate-pulse">
-            Синхронізація з сервером...
+            {isRecovering ? 'Відновлення вашого профілю за email...' : 'Синхронізація з сервером...'}
         </p>
       </div>
     );

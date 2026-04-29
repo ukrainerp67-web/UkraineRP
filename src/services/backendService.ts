@@ -123,10 +123,19 @@ class BackendService {
   }
 
   // Profile
-  async getProfile(uid: string) {
+  async getProfile(uid: string, email?: string) {
     if (!uid) return null;
     try {
-      const res = await fetch(`/api/profile/${uid}`);
+      const url = email ? `/api/profile/${uid}?email=${encodeURIComponent(email)}` : `/api/profile/${uid}`;
+      const res = await fetch(url);
+      return res.ok ? await res.json() : null;
+    } catch (e) { return null; }
+  }
+
+  async getProfileByEmail(email: string) {
+    if (!email) return null;
+    try {
+      const res = await fetch(`/api/profile/email/${encodeURIComponent(email)}`);
       return res.ok ? await res.json() : null;
     } catch (e) { return null; }
   }
@@ -179,9 +188,9 @@ class BackendService {
     return () => clearInterval(this.globalInterval);
   }
 
-  onProfileUpdate(uid: string, callback: (profile: any) => void) {
+  onProfileUpdate(uid: string, email: string | null, callback: (profile: any) => void) {
     const update = async () => {
-      const profile = await this.getProfile(uid);
+      const profile = await this.getProfile(uid, email || undefined);
       callback(profile); // Call even if null so subscriber knows fetch finished
     };
     const interval = setInterval(update, 2000); // Faster polling for better UX
@@ -368,9 +377,13 @@ class BackendService {
   }
 
   async searchUsers(queryStr: string) {
-    const res = await fetch('/api/online');
-    const users = await res.json();
-    return users.filter((u: any) => u.firstName?.toLowerCase().includes(queryStr.toLowerCase()) || u.lastName?.toLowerCase().includes(queryStr.toLowerCase()));
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(queryStr)}`);
+      return res.ok ? await res.json() : [];
+    } catch (e) {
+      console.error('searchUsers error:', e);
+      return [];
+    }
   }
 
   async auditUser(adminId: string, targetId: string) {
@@ -460,9 +473,15 @@ class BackendService {
 
   onAdminUsersUpdate(callback: (users: any[]) => void) {
     const update = async () => {
-      const res = await fetch('/api/online'); // For simplicity, admins monitor online users or we add an /api/admin/users
-      const users = await res.json();
-      callback(users);
+      try {
+        const res = await fetch('/api/admin/users');
+        if (res.ok) {
+          const users = await res.json();
+          callback(users);
+        }
+      } catch (e) {
+        console.error('onAdminUsersUpdate error:', e);
+      }
     };
     const interval = setInterval(update, 10000);
     update();

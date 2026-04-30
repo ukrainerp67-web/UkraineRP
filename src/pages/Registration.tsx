@@ -89,24 +89,19 @@ export const Registration: React.FC = () => {
     
     setLoading(true);
     try {
-      if (authMode === 'login') {
-        const result = await contextLogin(authForm);
+      if (authMode === 'login' || authMode === 'register') {
+        const result = authMode === 'login' ? await contextLogin(authForm) : await contextRegister(authForm);
+        
         if (result.error) {
             alert(result.error);
         } else if (result.user) {
-            // Success
+            // If profile is already attached to the result or fetched by context
+            // AuthContext.login/register now set profile and user together
             if (result.profile) {
-                // Already has profile, App.tsx will redirect to Dashboard
+                // Done. App.tsx will notice profile and switch to Dashboard
             } else {
                 setStep(2);
             }
-        }
-      } else {
-        const result = await contextRegister(authForm);
-        if (result.error) {
-            alert(result.error);
-        } else if (result.user) {
-            setStep(2);
         }
       }
     } catch (error: any) {

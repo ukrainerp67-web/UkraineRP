@@ -135,8 +135,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await backend.login(credentials);
     if (data.success && data.user) {
       handleSetUser(data.user, data.token);
-      const profileData = await backend.getProfile(data.user.uid, data.user.email || undefined);
-      setProfile(profileData);
+      // Use profile from response if available, otherwise fetch
+      if (data.profile) {
+        setProfile(data.profile);
+      } else {
+        const profileData = await backend.getProfile(data.user.uid, data.user.email || undefined);
+        setProfile(profileData);
+      }
     }
     return data;
   };
@@ -145,7 +150,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await backend.register(credentials);
     if (data.success && data.user) {
       handleSetUser(data.user, data.token);
-      setProfile(null);
+      if (data.profile) {
+        setProfile(data.profile);
+      } else {
+        setProfile(null);
+      }
     }
     return data;
   };
@@ -290,8 +299,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!res.ok) throw new Error('Session expired');
           
           const data = await res.json();
-          setUser(data.user);
-
+          // DO NOT call setUser yet to avoid triggering App.tsx re-render with null profile
+          
           // Subscriptions
           globalUnsubscribe = backend.onGlobalStateUpdate((state) => {
             if (state) {
@@ -301,8 +310,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           profileUnsubscribe = backend.onProfileUpdate(data.user.uid, data.user.email, (profileData) => {
+            // Set user and profile together when profile is found
+            setUser(data.user);
             setProfile(profileData);
             setLoading(false);
+            
             if (profileData) {
               backend.joinGame({
                 uid: data.user.uid,

@@ -165,7 +165,13 @@ async function startServer() {
     try {
       const existingUser = await prisma.player.findUnique({ where: { email } });
       if (existingUser) {
-        return res.status(400).json({ success: false, error: 'Цей Gmail вже зареєстрований. Спробуйте увійти.' });
+        // If user already exists, check password and log them in instead of error
+        const isMatch = await bcrypt.compare(password, existingUser.passwordHash || '');
+        if (isMatch) {
+          const token = jwt.sign({ uid: existingUser.uid, email: existingUser.email }, JWT_SECRET, { expiresIn: '14d' });
+          return res.json({ success: true, token, user: { uid: existingUser.uid, email: existingUser.email }, profile: existingUser });
+        }
+        return res.status(400).json({ success: false, error: 'Цей Gmail вже зареєстрований з іншим паролем.' });
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -202,7 +208,7 @@ async function startServer() {
       });
 
       const token = jwt.sign({ uid: player.uid, email: player.email }, JWT_SECRET, { expiresIn: '14d' });
-      res.json({ success: true, token, user: { uid: player.uid, email: player.email } });
+      res.json({ success: true, token, user: { uid: player.uid, email: player.email }, profile: player });
     } catch (e: any) {
       console.error('[AUTH] Register error:', e.message);
       res.status(400).json({ success: false, error: 'Помилка реєстрації. Перевірте з\'єднання з БД.' });
@@ -223,7 +229,7 @@ async function startServer() {
       }
 
       const token = jwt.sign({ uid: player.uid, email: player.email }, JWT_SECRET, { expiresIn: '7d' });
-      res.json({ success: true, token, user: { uid: player.uid, email: player.email } });
+      res.json({ success: true, token, user: { uid: player.uid, email: player.email }, profile: player });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

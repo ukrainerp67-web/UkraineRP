@@ -216,15 +216,19 @@ export const AdminView: React.FC = () => {
   };
 
   const handleDelete = async (uid: string) => {
-    if (!window.confirm('ВИ ВПЕВНЕНІ? Це видалить акаунт гравця назавжди!')) return;
+    if (!window.confirm('ВИ ВПЕВНЕНІ, що хочете ПОВНІСТЮ ВИДАЛИТИ акаунт? Цю дію неможливо скасувати!')) return;
 
     try {
-      await backend.adminDeleteUser(uid);
-      alert('Акаунт видалено');
-      await fetchData();
+      const result = await backend.adminDeleteUser(uid);
+      if (result && result.success) {
+        alert('Акаунт видалено');
+        await fetchData();
+      } else {
+        alert(`Помилка: ${result?.error || 'Невідома помилка'}`);
+      }
     } catch (error) {
       console.error('Delete error:', error);
-      alert('Помилка видалення');
+      alert('Помилка видалення (мережа)');
     }
   };
 
@@ -395,7 +399,7 @@ export const AdminView: React.FC = () => {
                       >
                         <MessageSquare className="w-4 h-4" />
                       </button>
-                      <button 
+                       <button 
                         onClick={() => { setSelectedUser(user); setIsEditing(true); }}
                         className="p-2 hover:bg-white/10 rounded-lg text-text-dim hover:text-white transition-colors"
                         title="Редагувати"
@@ -404,11 +408,7 @@ export const AdminView: React.FC = () => {
                       </button>
                       {adminProfile.email === 'ukrainerp67@gmail.com' && (
                         <button 
-                          onClick={() => {
-                            if (window.confirm(`Ви впевнені, що хочете ПОВНІСТЮ ВИДАЛИТИ акаунт ${user.firstName} ${user.lastName}? Це дію неможливо скасувати.`)) {
-                              handleDelete(user.uid);
-                            }
-                          }}
+                          onClick={() => handleDelete(user.uid)}
                           className="p-2 hover:bg-red-500/20 rounded-lg text-text-dim hover:text-red-500 transition-colors"
                           title="Остаточно видалити"
                         >

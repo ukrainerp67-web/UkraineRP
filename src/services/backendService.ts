@@ -64,7 +64,15 @@ class BackendService {
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
-    return fetch(url, { ...options, headers });
+    const res = await fetch(url, { ...options, headers });
+    
+    if (res.status === 401) {
+      console.warn('Auth token invalid or expired. Logging out.');
+      this.logout();
+      window.location.href = '/';
+    }
+    
+    return res;
   }
 
   private async syncOnlinePlayers() {
@@ -164,7 +172,7 @@ class BackendService {
 
   async deleteProfile(uid: string) {
     try {
-      const res = await fetch(`/api/profile/${uid}`, { method: 'DELETE' });
+      const res = await this.authFetch(`/api/profile/${uid}`, { method: 'DELETE' });
       return await res.json();
     } catch (e) { return { success: false, error: e }; }
   }

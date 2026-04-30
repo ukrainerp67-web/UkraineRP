@@ -50,10 +50,21 @@ const authenticateToken = (req: any, res: any, next: any) => {
 
   if (!token) return res.status(401).json({ error: 'Token missing' });
 
-  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+  jwt.verify(token, JWT_SECRET, async (err: any, user: any) => {
     if (err) return res.status(403).json({ error: 'Token invalid or expired' });
-    req.user = user;
-    next();
+    
+    // Immediate kick check: verify user still exists in DB
+    try {
+      const dbUser = await prisma.player.findUnique({ where: { uid: user.uid } });
+      if (!dbUser) {
+        return res.status(401).json({ error: 'Ваш акаунт було видалено. Перенаправлення...' });
+      }
+      req.user = user;
+      next();
+    } catch (e) {
+      console.error('Auth verification error:', e);
+      return res.status(500).json({ error: 'Database connection error during auth' });
+    }
   });
 };
 
@@ -259,7 +270,7 @@ async function startServer() {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       const player = await prisma.player.findUnique({ where: { uid: decoded.uid } });
-      if (!player) return res.status(404).json({ error: 'Користувача не знайдено' });
+      if (!player) return res.status(401).json({ error: 'Користувач не знайдений або був видалений' });
       res.json({ user: { uid: player.uid, email: player.email } });
     } catch (e) {
       res.status(401).json({ error: 'Сесія завершена, увійдіть знову' });
@@ -649,12 +660,23 @@ async function startServer() {
         return res.status(403).json({ success: false, error: 'Тільки головний розробник може видаляти акаунти' });
       }
 
+      const targetPlayer = await prisma.player.findUnique({ where: { uid } });
+      if (!targetPlayer) {
+        return res.status(404).json({ success: false, error: 'Гравець не знайдений' });
+      }
+
+      const playerId = targetPlayer.id;
+
       await prisma.$transaction([
+        prisma.playerAchievement.deleteMany({ where: { playerId } }),
+        prisma.inventoryItem.deleteMany({ where: { playerId } }),
         prisma.notification.deleteMany({ where: { userId: uid } }),
         prisma.fine.deleteMany({ where: { userId: uid } }),
         prisma.presence.deleteMany({ where: { uid } }),
         prisma.player.delete({ where: { uid } })
       ]);
+      
+      console.log(`[ADMIN] Account deleted: ${uid} (Email: ${targetPlayer.email})`);
       res.json({ success: true });
     } catch (e: any) {
       console.error('[ADMIN] Delete error:', e.message);

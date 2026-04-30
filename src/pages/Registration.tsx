@@ -33,6 +33,22 @@ export const Registration: React.FC = () => {
     signature: '',
   });
   const [loading, setLoading] = useState(false);
+  const [dbStatus, setDbStatus] = useState<any>({ ok: true, checking: true });
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        setDbStatus({ ok: data.status === 'ok', checking: false, message: data.message });
+      } catch (e) {
+        setDbStatus({ ok: false, checking: false });
+      }
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -145,6 +161,41 @@ export const Registration: React.FC = () => {
 
   return (
     <div className="h-[100dvh] bg-[#0A0A0C] flex flex-col items-center justify-start overflow-y-auto p-4 md:justify-center text-[#E0E0E0]">
+      {/* Database Error Overlay */}
+      {!dbStatus.ok && !dbStatus.checking && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-card-dark border border-red-500/30 p-8 rounded-3xl text-center shadow-[0_0_50px_rgba(239,68,68,0.1)]"
+          >
+            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+               <X className="w-10 h-10 text-red-500" />
+            </div>
+            <h2 className="text-xl font-black text-white uppercase tracking-widest mb-4">База даних недоступна</h2>
+            <div className="space-y-4">
+                <p className="text-[10px] text-text-muted uppercase tracking-widest leading-loose">
+                    Сервер гри не може підключитися до бази даних PostgreSQL на Railway.
+                </p>
+                <div className="bg-black/40 p-4 rounded-xl border border-white/5 text-left">
+                    <p className="text-[9px] font-black text-ukraine-yellow uppercase mb-2">Що робити:</p>
+                    <ul className="text-[9px] text-text-dim space-y-2 list-disc pl-4 uppercase tracking-tighter">
+                        <li>Перевірте вкладку Settings в Railway</li>
+                        <li>Переконайтеся, що змінна <span className="text-white">DATABASE_URL</span> прописана вірно</li>
+                        <li>Перезапустіть сервіс на Railway</li>
+                    </ul>
+                </div>
+                <button 
+                    onClick={() => window.location.reload()}
+                    className="w-full py-4 bg-white text-black font-black uppercase tracking-widest rounded-xl hover:bg-gray-200 transition-all"
+                >
+                    ПЕРЕПЕРЕВІРИТИ
+                </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Decorative gradient overlay */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-20">
          <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-ukraine-blue rounded-full blur-[120px]" />

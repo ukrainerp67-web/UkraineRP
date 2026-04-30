@@ -34,6 +34,7 @@ model Player {
   // Складні дані зберігаємо як JSON (Призма підтримує Json тип для PostgreSQL)
   bankCards        Json     @default("[]")
   properties       Json     @default("[]")
+  businesses       Json     @default("[]")
   inventory        Json     @default("[]")
   inventoryItems   InventoryItem[]
   achievements     PlayerAchievement[]

@@ -9,40 +9,35 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 // Railway/AI Studio Alias fix: 
-// Якщо змінна називається українською (як на скріншоті), копіюємо її в DATABASE_URL для Prisma
-if (!process.env.DATABASE_URL && process.env['URL-адреса_БАЗИ_ДАНИХ']) {
-  process.env.DATABASE_URL = process.env['URL-адреса_БАЗИ_ДАНИХ'];
-}
-if (!process.env.DATABASE_URL && process.env['ПУБЛІЧНА_URL-АДРЕСА_БАЗИ_ДАНИХ']) {
-  process.env.DATABASE_URL = process.env['ПУБЛІЧНА_URL-АДРЕСА_БАЗИ_ДАНИХ'];
+const rawUrl = process.env.DATABASE_URL || process.env['URL-адреса_БАЗИ_ДАНИХ'] || process.env['ПУБЛІЧНА_URL-АДРЕСА_БАЗИ_ДАНИХ'];
+if (rawUrl && (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '')) {
+  process.env.DATABASE_URL = rawUrl;
+  console.log('[CONFIG] Використовується URL БД з альтернативної змінної');
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const prisma = new PrismaClient({
-  errorFormat: 'minimal',
-});
+const prisma = new PrismaClient();
 
-// Перевірка підключення до бази даних
-async function checkDatabase() {
+// Перевірка підключення до бази даних з ретраями
+async function checkDatabase(retries = 10) {
   const url = process.env.DATABASE_URL;
-  if (!url) {
-    console.error('❌ КРИТИЧНО: DATABASE_URL не знайдено в конфігурації!');
+  if (!url || url.trim() === '') {
+    console.error('❌ КРИТИЧНО: DATABASE_URL не знайдено!');
     return false;
   }
-  if (!url.startsWith('postgresql://') && !url.startsWith('postgres://')) {
-    console.error('❌ КРИТИЧНО: DATABASE_URL має некоректний формат! Має починатися з postgresql://');
-    return false;
+  
+  for (let i = 0; i < retries; i++) {
+    try {
+      await prisma.$executeRaw`SELECT 1`;
+      console.log('✅ Успішно підключено до PostgreSQL');
+      return true;
+    } catch (e: any) {
+      console.error(`❌ Спроба ${i+1}/${retries}: Помилка підключення до БД (DATABASE_URL=${url.substring(0, 20)}...):`, e.message);
+      if (i < retries - 1) await new Promise(r => setTimeout(r, 3000));
+    }
   }
-  try {
-    await prisma.$connect();
-    console.log('✅ Успішно підключено до Railway PostgreSQL');
-    return true;
-  } catch (e: any) {
-    console.error('❌ Помилка підключення до БД:', e.message);
-    return false;
-  }
+  return false;
 }
 
 async function startServer() {
@@ -51,6 +46,17 @@ async function startServer() {
 
   let isDbReady = false;
   checkDatabase().then(ready => isDbReady = ready);
+
+  app.get('/api/health', (req, res) => {
+    res.json({ 
+      status: isDbReady ? 'ok' : 'db_error', 
+      db: isDbReady,
+      env: {
+        has_url: !!process.env.DATABASE_URL,
+        url_prefix: process.env.DATABASE_URL ? process.env.DATABASE_URL.split(':')[0] : 'none'
+      }
+    });
+  });
 
   // Middleware для перевірки БД перед запитами до API
   app.use('/api', (req, res, next) => {
@@ -95,6 +101,11 @@ async function startServer() {
   app.post('/api/auth/register', async (req, res) => {
     const { email, password, username, firstName, lastName } = req.body;
     try {
+      const existingUser = await prisma.player.findUnique({ where: { email } });
+      if (existingUser) {
+        return res.status(400).json({ success: false, error: 'Цей Gmail вже зареєстрований. Спробуйте увійти.' });
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
       const uid = `up-${Math.random().toString(36).substring(2, 11)}`;
       

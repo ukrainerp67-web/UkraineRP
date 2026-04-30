@@ -83,7 +83,32 @@ async function startServer() {
   const PORT = 3000;
 
   let isDbReady = false;
-  checkDatabase().then(ready => isDbReady = ready);
+  
+  async function initSystemData() {
+    try {
+      const config = await prisma.systemConfig.findUnique({ where: { id: 'global' } });
+      if (!config) {
+        await prisma.systemConfig.create({
+          data: {
+            id: 'global',
+            budget: 1000000,
+            taxRate: 0.20,
+            trustRating: 60
+          }
+        });
+        console.log('[SERVER] Global system config initialized');
+      }
+    } catch (err) {
+      console.error('[SERVER] Failed to init system config:', err);
+    }
+  }
+
+  checkDatabase().then(async (ready) => {
+    isDbReady = ready;
+    if (ready) {
+      await initSystemData();
+    }
+  });
 
   app.get('/api/health', (req, res) => {
     res.json({ 
@@ -113,25 +138,6 @@ async function startServer() {
     next();
   });
 
-  // Initialize System Config if missing
-  if (isDbReady) {
-    try {
-      const config = await prisma.systemConfig.findUnique({ where: { id: 'global' } });
-      if (!config) {
-        await prisma.systemConfig.create({
-          data: {
-            id: 'global',
-            budget: 1000000,
-            taxRate: 0.20,
-            trustRating: 60
-          }
-        });
-        console.log('[SERVER] Global system config initialized');
-      }
-    } catch (err) {
-      console.error('[SERVER] Failed to init system config:', err);
-    }
-  }
 
   app.use(cors());
   app.use(morgan('dev'));

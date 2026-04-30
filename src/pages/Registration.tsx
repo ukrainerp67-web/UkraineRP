@@ -40,9 +40,13 @@ export const Registration: React.FC = () => {
       try {
         const res = await fetch('/api/health');
         const data = await res.json();
-        setDbStatus({ ok: data.status === 'ok', checking: false, message: data.message });
-      } catch (e) {
-        setDbStatus({ ok: false, checking: false });
+        setDbStatus({ 
+          ok: data.status === 'ok', 
+          checking: false, 
+          message: data.error || data.message 
+        });
+      } catch (e: any) {
+        setDbStatus({ ok: false, checking: false, message: e.message });
       }
     };
     checkStatus();
@@ -175,7 +179,7 @@ export const Registration: React.FC = () => {
             <h2 className="text-xl font-black text-white uppercase tracking-widest mb-4">База даних недоступна</h2>
             <div className="space-y-4">
                 <p className="text-[10px] text-text-muted uppercase tracking-widest leading-loose">
-                    Сервер гри не може підключитися до бази даних PostgreSQL на Railway.
+                    {dbStatus.message || 'Сервер гри не може підключитися до бази даних PostgreSQL на Railway.'}
                 </p>
                 <div className="bg-black/40 p-4 rounded-xl border border-white/5 text-left">
                     <p className="text-[9px] font-black text-ukraine-yellow uppercase mb-2">Що робити:</p>

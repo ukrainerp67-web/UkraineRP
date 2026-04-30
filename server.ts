@@ -10,34 +10,44 @@ import jwt from 'jsonwebtoken';
 
 // Railway/AI Studio Alias fix: 
 const rawUrl = process.env.DATABASE_URL || process.env['URL-адреса_БАЗИ_ДАНИХ'] || process.env['ПУБЛІЧНА_URL-АДРЕСА_БАЗИ_ДАНИХ'];
-if (rawUrl && (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '')) {
+if (rawUrl && (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '' || process.env.DATABASE_URL === 'placeholder')) {
   process.env.DATABASE_URL = rawUrl;
-  console.log('[CONFIG] Використовується URL БД з альтернативної змінної');
+  console.log('[CONFIG] DATABASE_URL set from alias');
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
 
-const prisma = new PrismaClient();
+// Initialize Prisma with explicit URL if available
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+});
 
-// Перевірка підключення до бази даних з ретраями (збільшено до 15 спроб)
-async function checkDatabase(retries = 15) {
+let dbLastError = '';
+
+// Перевірка підключення до бази даних з ретраями (збільшено до 20 спроб)
+async function checkDatabase(retries = 20) {
   const url = process.env.DATABASE_URL;
-  if (!url || url.trim() === '') {
+  if (!url || url.trim() === '' || url === 'placeholder') {
+    dbLastError = 'DATABASE_URL is missing or empty';
     console.error('❌ КРИТИЧНО: DATABASE_URL не знайдено!');
     return false;
   }
   
   for (let i = 0; i < retries; i++) {
     try {
-      // Спроба виконати будь-який запит для перевірки реального з'єднання
       await prisma.$connect();
       await prisma.$executeRaw`SELECT 1`;
-      console.log('✅ Успішно підключено до Railway PostgreSQL');
+      console.log('✅ Успішно підключено до PostgreSQL');
+      dbLastError = '';
       return true;
     } catch (e: any) {
-      console.error(`❌ Спроба ${i+1}/${retries}: Помилка з'єднання (Railway ${url.substring(0, 15)}...):`, e.message);
+      dbLastError = e.message;
+      console.error(`❌ Спроба ${i+1}/${retries}: Помилка з'єднання:`, e.message);
       if (i < retries - 1) {
-        // Очікуємо 3-4 секунди між спробами, поки Railway завантажує контейнер БД
         await new Promise(r => setTimeout(r, 4000));
       }
     }
@@ -56,6 +66,7 @@ async function startServer() {
     res.json({ 
       status: isDbReady ? 'ok' : 'db_error', 
       db: isDbReady,
+      error: dbLastError,
       env: {
         has_url: !!process.env.DATABASE_URL,
         url_prefix: process.env.DATABASE_URL ? process.env.DATABASE_URL.split(':')[0] : 'none'

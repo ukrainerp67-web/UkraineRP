@@ -311,7 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           let hadProfile = false;
           profileUnsubscribe = backend.onProfileUpdate(data.user.uid, data.user.email, (profileData) => {
-            // Detection of deletion: if we previously had a profile and now it's gone
+            // Detection of deletion: if we previously had a completed profile and now it's gone
             if (hadProfile && !profileData) {
               console.log("[AUTH] Profile deleted. Kicking user...");
               logout();
@@ -319,14 +319,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             
             if (profileData) {
-              hadProfile = true;
+              // Only consider it a "real" existing profile if it has basic data
+              if (profileData.firstName) hadProfile = true;
+              
               setUser(data.user);
               setProfile(profileData);
               setLoading(false);
               
               backend.joinGame({
                 uid: data.user.uid,
-                name: `${profileData.firstName} ${profileData.lastName}`,
+                name: profileData.firstName ? `${profileData.firstName} ${profileData.lastName}` : 'Новий гравець',
                 status: 'online'
               });
             } else {

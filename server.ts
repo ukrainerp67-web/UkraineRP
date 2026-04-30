@@ -62,19 +62,19 @@ const authenticateToken = (req: any, res: any, next: any) => {
       const path = req.path;
       const method = req.method;
       
-      const isProfileRoute = path.startsWith('/api/profile');
-      const isAuthMe = path === '/api/auth/me';
-      const isPresence = path.startsWith('/api/presence');
-      const isOnline = path === '/api/online';
-      const isMessages = path === '/api/messages';
-      const isHealth = path === '/api/health';
+      const isProfileRoute = path.includes('/profile');
+      const isAuthMe = path.includes('/auth/me');
+      const isPresence = path.includes('/presence');
+      const isOnline = path.includes('/online');
+      const isMessages = path.includes('/messages');
+      const isHealth = path.includes('/health');
       const isNotifications = path.includes('/notifications');
 
       const isDiscovery = isProfileRoute || isAuthMe || isPresence || isOnline || isMessages || isHealth || isNotifications;
 
       if (!dbUser && !isDiscovery) {
-        console.warn(`[AUTH] Kicking user ${user.uid} - not found in database.`);
-        return res.status(401).json({ error: 'Ваш акаунт було видалено. Перенаправлення...' });
+        console.warn(`[AUTH] Kicking user ${user.uid} - not found in database. Path: ${path}`);
+        return res.status(401).json({ error: 'Профіль не знайдено. Будь ласка, завершіть реєстрацію.' });
       }
 
       req.user = user;

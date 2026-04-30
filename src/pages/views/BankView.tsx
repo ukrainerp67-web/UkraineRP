@@ -6,7 +6,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { backend } from '../../services/backendService';
 
 export const BankView: React.FC = () => {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, updateProfile } = useAuth();
   const { sendNotification } = useNotifications();
   const [showCardCreator, setShowCardCreator] = useState(false);
   const [showFinePayment, setShowFinePayment] = useState(false);
@@ -20,10 +20,21 @@ export const BankView: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);
 
+  if (!profile) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 bg-card-dark rounded-3xl border border-white/5 animate-pulse">
+        <Landmark className="w-12 h-12 text-white/10 mb-4" />
+        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest">Завантаження банківської системи...</p>
+      </div>
+    );
+  }
+
   useEffect(() => {
     if (profile?.uid) {
+      console.log('BankView: Setting up fines listener for', profile.uid);
       const unsubscribe = backend.onFinesUpdate(profile.uid, (data) => {
-        setFines(data.filter(f => f.status === 'pending'));
+        const pendingFines = Array.isArray(data) ? data.filter(f => f && f.status === 'pending') : [];
+        setFines(pendingFines);
       });
       return () => unsubscribe();
     }
@@ -103,13 +114,30 @@ export const BankView: React.FC = () => {
         bankCards: [...currentCards, newCard]
       });
       
-      if (result.success) {
-        await refreshProfile();
-        await sendNotification(profile.uid, 'Банківська карта', `Вашу карту "${selectedCardType.name}" активовано!`, 'success');
+      console.log('BankView: Card save result:', result);
+      
+      if (result && result.success) {
+        // Refresh local state immediately with returned user data
+        if (result.user) {
+          updateProfile(result.user);
+        } else {
+          await refreshProfile();
+        }
+        
+        console.log('BankView: Profile updated after card creation');
+        
+        try {
+          await sendNotification(profile.uid, 'Банківська карта', `Вашу карту "${selectedCardType.name}" активовано!`, 'success');
+        } catch (nErr) {
+          console.warn('Notification failed during card creation', nErr);
+        }
+
         setShowCardCreator(false);
         resetCreator();
       } else {
-        alert("Помилка при збереженні карти: " + (result.error || "Невідома помилка"));
+        const errMsg = result?.error || "Невідома помилка сервера";
+        setCreationError(`Помилка: ${errMsg}`);
+        alert("Помилка при збереженні карти: " + errMsg);
       }
     } catch (error) {
       console.error('Card creation error:', error);

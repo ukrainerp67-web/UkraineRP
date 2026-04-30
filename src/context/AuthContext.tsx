@@ -73,6 +73,7 @@ interface AuthContextType {
   isRecovering: boolean;
   onlinePlayers: OnlinePlayer[];
   refreshProfile: () => Promise<void>;
+  updateProfile: (newProfile: UserProfile) => void;
   login: (credentials: any) => Promise<any>;
   register: (credentials: any) => Promise<any>;
   logout: () => void;
@@ -91,6 +92,7 @@ const AuthContext = createContext<AuthContextType>({
   isRecovering: false,
   onlinePlayers: [],
   refreshProfile: async () => {},
+  updateProfile: () => {},
   login: async () => ({}),
   register: async () => ({}),
   logout: () => {},
@@ -110,6 +112,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [onlinePlayers, setOnlinePlayers] = useState<OnlinePlayer[]>([]);
   const [globalTaxRate, setGlobalTaxRate] = useState(0.20);
   const [globalBudget, setGlobalBudget] = useState(1000000);
+
+  const updateProfile = (newProfile: UserProfile) => {
+    if (newProfile) {
+      setProfile(newProfile);
+    }
+  };
 
   const refreshProfile = async () => {
     if (user) {
@@ -366,6 +374,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isRecovering,
         onlinePlayers, 
         refreshProfile, 
+        updateProfile,
         login, 
         register: registerUser, 
         logout,

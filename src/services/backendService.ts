@@ -272,7 +272,7 @@ class BackendService {
 
   async updateGlobalState(updates: any) {
     try {
-      const res = await fetch('/api/system/global', {
+      const res = await this.authFetch('/api/system/global', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)

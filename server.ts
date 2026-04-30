@@ -523,8 +523,26 @@ async function startServer() {
   });
 
   app.patch('/api/system/global', authenticateToken, async (req: any, res) => {
-    const isAdmin = req.dbUser && req.dbUser.role === 'admin';
-    if (!isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const isGovLeader = req.dbUser && (
+      req.dbUser.role === 'admin' || 
+      req.dbUser.role === 'rada' ||
+      [
+        'Президент', 
+        "Прем'єр Міністр", 
+        "Прем'єр міністр", 
+        "Прем'єр-міністр", 
+        'Міністр фінансів'
+      ].includes(req.dbUser.role) ||
+      [
+        'Президент', 
+        "Прем'єр Міністр", 
+        "Прем'єр міністр", 
+        "Прем'єр-міністр", 
+        'Міністр фінансів'
+      ].includes(req.dbUser.status)
+    );
+    
+    if (!isGovLeader) return res.status(403).json({ error: 'Доступ лише для членів уряду' });
     const { budget, taxRate, trustRating } = req.body;
     try {
       const state = await prisma.systemConfig.update({

@@ -83,15 +83,25 @@ export const RadaView: React.FC = () => {
   const handlePresidentSpeech = async () => {
     if (!profile || !speech) return;
     setLoadingAction('speech');
-    await backend.addressThePeople(profile.uid, speech);
-    setSpeech('');
+    const res = await backend.addressThePeople(profile.uid, speech);
+    if (res.success) {
+      alert(`Ваша промова опублікована! Рейтинг довіри зріс на ${res.trustChange}%`);
+      setSpeech('');
+    } else {
+      alert('Помилка при публікації промови.');
+    }
     setLoadingAction(null);
   };
 
   const handleTaxChange = async () => {
     if (!profile) return;
     setLoadingAction('tax');
-    await backend.setTaxRate(profile.uid, parseInt(taxInput) / 100);
+    const res = await backend.setTaxRate(profile.uid, parseInt(taxInput) / 100);
+    if (res.success) {
+      alert(`Нову ставку оподаткування (${taxInput}%) успішно затверджено!`);
+    } else {
+      alert(`Помилка: ${(res as any).message || (res as any).error || 'Не вдалося змінити податок'}`);
+    }
     setLoadingAction(null);
   };
 
@@ -115,9 +125,13 @@ export const RadaView: React.FC = () => {
     setLoadingAction('bonus');
     
     // Original applyBonusOrPenalty now handles budget deduction for bonuses
-    await backend.applyBonusOrPenalty(profile.uid, selectedPlayer, amount, bonusReason);
-    
-    setBonusReason('');
+    const res = await backend.applyBonusOrPenalty(profile.uid, selectedPlayer, amount, bonusReason);
+    if (res.success) {
+      alert(`Премія ₴${amount.toLocaleString()} успішно виплачена!`);
+      setBonusReason('');
+    } else {
+      alert(`Помилка: ${(res as any).message || (res as any).error || 'Не вдалося виплатити премію'}`);
+    }
     setLoadingAction(null);
   };
 
@@ -125,8 +139,13 @@ export const RadaView: React.FC = () => {
     if (!profile || !selectedPlayer || !bonusReason) return;
     const amount = Math.abs(parseInt(bonusAmount));
     setLoadingAction('fine');
-    await backend.issueFine(profile.uid, selectedPlayer, amount, bonusReason, parseInt(fineDeadline));
-    setBonusReason('');
+    const res = await backend.issueFine(profile.uid, selectedPlayer, amount, bonusReason, parseInt(fineDeadline));
+    if (res.success) {
+      alert(`Штраф ₴${amount.toLocaleString()} успішно виписано!`);
+      setBonusReason('');
+    } else {
+      alert(`Помилка: ${(res as any).message || (res as any).error || 'Не вдалося виписати штраф'}`);
+    }
     setLoadingAction(null);
   };
 
@@ -145,7 +164,12 @@ export const RadaView: React.FC = () => {
   const handleFund = async () => {
     if (!profile || !fundAmount) return;
     setLoadingAction('fund');
-    await backend.fundSphere(profile.uid, fundSphere, parseInt(fundAmount));
+    const res = await backend.fundSphere(profile.uid, fundSphere, parseInt(fundAmount));
+    if (res.success) {
+      alert(`Успішно виділено ₴${parseInt(fundAmount).toLocaleString()} на сферу "${fundSphere}"`);
+    } else {
+      alert(`Помилка: ${(res as any).message || (res as any).error || 'Не вдалося виділити кошти'}`);
+    }
     setLoadingAction(null);
   };
 

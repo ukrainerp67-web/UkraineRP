@@ -389,13 +389,19 @@ export const AdminView: React.FC = () => {
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
-                      <button 
-                        onClick={() => handleDelete(user.uid)}
-                        className="p-2 hover:bg-red-500/20 rounded-lg text-text-dim hover:text-red-500 transition-colors"
-                        title="Видалити"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {adminProfile.email === 'ukrainerp67@gmail.com' && (
+                        <button 
+                          onClick={() => {
+                            if (window.confirm(`Ви впевнені, що хочете ПОВНІСТЮ ВИДАЛИТИ акаунт ${user.firstName} ${user.lastName}? Це дію неможливо скасувати.`)) {
+                              handleDelete(user.uid);
+                            }
+                          }}
+                          className="p-2 hover:bg-red-500/20 rounded-lg text-text-dim hover:text-red-500 transition-colors"
+                          title="Остаточно видалити"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

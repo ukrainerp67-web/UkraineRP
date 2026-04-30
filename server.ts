@@ -620,17 +620,24 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/profile/:uid', async (req, res) => {
+  app.delete('/api/profile/:uid', authenticateToken, async (req: any, res) => {
     const uid = req.params.uid;
     try {
+      // Check if requester is the owner
+      const requester = await prisma.player.findUnique({ where: { uid: req.user.uid } });
+      if (requester?.email !== 'ukrainerp67@gmail.com') {
+        return res.status(403).json({ success: false, error: 'Тільки головний розробник може видаляти акаунти' });
+      }
+
       await prisma.$transaction([
-        prisma.player.delete({ where: { uid } }),
-        prisma.presence.deleteMany({ where: { uid } }),
         prisma.notification.deleteMany({ where: { userId: uid } }),
-        prisma.fine.deleteMany({ where: { userId: uid } })
+        prisma.fine.deleteMany({ where: { userId: uid } }),
+        prisma.presence.deleteMany({ where: { uid } }),
+        prisma.player.delete({ where: { uid } })
       ]);
       res.json({ success: true });
     } catch (e: any) {
+      console.error('[ADMIN] Delete error:', e.message);
       res.status(500).json({ success: false, error: e.message });
     }
   });

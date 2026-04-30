@@ -309,24 +309,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           });
 
+          let hadProfile = false;
           profileUnsubscribe = backend.onProfileUpdate(data.user.uid, data.user.email, (profileData) => {
-            // If we had a profile and now it's gone, it means the account was deleted by admin
-            if (user && profile && !profileData) {
-              window.location.reload(); // Hard reset on deletion
+            // Detection of deletion: if we previously had a profile and now it's gone
+            if (hadProfile && !profileData) {
+              console.log("[AUTH] Profile deleted. Kicking user...");
+              backend.logout();
+              window.location.href = '/'; 
               return;
             }
             
-            // Set user and profile together when profile is found
-            setUser(data.user);
-            setProfile(profileData);
-            setLoading(false);
-            
             if (profileData) {
+              hadProfile = true;
+              setUser(data.user);
+              setProfile(profileData);
+              setLoading(false);
+              
               backend.joinGame({
                 uid: data.user.uid,
                 name: `${profileData.firstName} ${profileData.lastName}`,
                 status: 'online'
               });
+            } else {
+               // First fetch returned null - player might still be creating character
+               setLoading(false);
             }
           });
 

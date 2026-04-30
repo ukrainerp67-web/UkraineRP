@@ -36,27 +36,28 @@ export const AdminView: React.FC = () => {
             'Authorization': token ? `Bearer ${token}` : ''
           }
         });
-        if (res.ok) {
-          const data = await res.json();
-          setUsers(data);
-          
-          // Calculate stats
-          const totalPlayers = data.length;
-          const totalEconomy = data.reduce((acc: number, u: any) => acc + (Number(u.balance) || 0), 0);
-          const fiveMinsAgo = Date.now() - 5 * 60 * 1000;
-          const onlineNow = data.filter((u: any) => {
-            if (!u.lastActive) return false;
-            const time = new Date(u.lastActive).getTime();
-            return time > fiveMinsAgo;
-          }).length;
+          if (res.ok) {
+            const data = await res.json();
+            const usersArray = Array.isArray(data) ? data : [];
+            setUsers(usersArray);
+            
+            // Calculate stats
+            const totalPlayers = usersArray.length;
+            const totalEconomy = usersArray.reduce((acc: number, u: any) => acc + (Number(u.balance) || 0), 0);
+            const fiveMinsAgo = Date.now() - 5 * 60 * 1000;
+            const onlineNow = usersArray.filter((u: any) => {
+              if (!u.lastActive) return false;
+              const time = new Date(u.lastActive).getTime();
+              return time > fiveMinsAgo;
+            }).length;
 
-          setStats({
-            totalPlayers,
-            totalEconomy,
-            onlineNow,
-            avgSocialRating: data.length > 0 ? data.reduce((acc: number, u: any) => acc + (Number(u.socialRating) || 0), 0) / data.length : 0
-          });
-        } else {
+            setStats({
+              totalPlayers,
+              totalEconomy,
+              onlineNow,
+              avgSocialRating: usersArray.length > 0 ? usersArray.reduce((acc: number, u: any) => acc + (Number(u.socialRating) || 0), 0) / usersArray.length : 0
+            });
+          } else {
            const errText = await res.text();
            console.warn('Admin users fetch not ok:', res.status, errText);
         }
@@ -83,7 +84,7 @@ export const AdminView: React.FC = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setUsers(data);
+        setUsers(Array.isArray(data) ? data : []);
       }
     } catch (e) {}
   };
@@ -267,9 +268,192 @@ export const AdminView: React.FC = () => {
     }
   };
 
+  const isOnline = (user: any) => {
+    if (!user.lastActive) return false;
+    const now = Date.now();
+    const lastActive = new Date(user.lastActive).getTime();
+    // Since presence polls every 3s, being inactive for > 15s usually means offline/tab closed
+    return (now - lastActive) < 15000;
+  };
+
   const filteredUsers = users.filter(u => 
     `${u.firstName} ${u.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.uid.includes(searchQuery)
+  );
+
+  const adminUsers = filteredUsers
+    .filter(u => u.role === 'admin' || u.email === 'ukrainerp67@gmail.com')
+    .sort((a, b) => (isOnline(b) ? 1 : 0) - (isOnline(a) ? 1 : 0));
+
+  const regularUsers = filteredUsers
+    .filter(u => u.role !== 'admin' && u.email !== 'ukrainerp67@gmail.com')
+    .sort((a, b) => (isOnline(b) ? 1 : 0) - (isOnline(a) ? 1 : 0));
+
+  const renderUserTable = (usersList: any[], title: string, icon: React.ReactNode) => (
+    <div className={`bg-card-dark border ${title.includes("Адміністратори") ? "border-ukraine-yellow/20 shadow-[0_0_30px_rgba(255,221,0,0.05)]" : "border-white/5"} rounded-3xl overflow-hidden shadow-2xl mb-8`}>
+      <div className={`p-6 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 ${title.includes("Адміністратори") ? 'bg-gradient-to-r from-ukraine-yellow/[0.03] to-transparent' : 'bg-gradient-to-r from-white/[0.02] to-transparent'}`}>
+        <h3 className="text-lg font-black text-white uppercase tracking-tighter flex items-center gap-2">
+          {icon}
+          {title}
+          <div className="flex items-center gap-2 ml-4">
+             <span className="px-2 py-0.5 rounded-full bg-black/40 text-[10px] text-text-dim border border-white/5 font-mono">
+               УСЬОГО: {usersList.length}
+             </span>
+             <span className="px-2 py-0.5 rounded-full bg-green-500/10 text-[10px] text-green-400 border border-green-500/20 font-mono">
+               ОНЛАЙН: {usersList.filter(u => isOnline(u)).length}
+             </span>
+          </div>
+        </h3>
+        {title === "Всі Гравці" && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-dim" />
+            <input 
+              type="text"
+              placeholder="Пошук за ім'ям або ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-xl py-2.5 pl-9 pr-4 text-sm focus:outline-none focus:border-ukraine-blue w-full md:w-80 transition-all focus:ring-2 focus:ring-ukraine-blue/20"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="overflow-x-auto custom-scrollbar">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-white/5 text-[9px] md:text-[10px] font-black text-text-dim uppercase tracking-widest">
+              <th className="px-6 py-4">Гравець</th>
+              <th className="px-6 py-4 font-mono">Фінанси</th>
+              <th className="px-6 py-4">Рейтинг</th>
+              <th className="px-6 py-4">Статус / Роль</th>
+              <th className="px-6 py-4 text-right">Управління</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {usersList.map((user) => {
+              const online = isOnline(user);
+              return (
+                <tr key={user.uid} className={`hover:bg-white/[0.03] transition-all group ${online ? 'bg-green-500/[0.01]' : ''}`}>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="relative group-hover:scale-110 transition-transform duration-300">
+                        <div className={`w-11 h-11 rounded-full bg-white/5 flex items-center justify-center font-bold overflow-hidden border-2 ${online ? 'border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.2)]' : 'border-white/10'}`}>
+                          {user.passportPhoto ? <img src={user.passportPhoto} className="w-full h-full object-cover" /> : user.firstName?.charAt(0) || '?'}
+                        </div>
+                        {online && (
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-card-dark rounded-full flex items-center justify-center">
+                            <div className="w-2.5 h-2.5 bg-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.8)] animate-pulse" title="В мережі" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-sm font-black text-white flex items-center gap-1.5">
+                          {user.firstName} {user.lastName}
+                          {user.isVerified && <BadgeCheck className="w-4 h-4 text-ukraine-blue fill-ukraine-blue/10" />}
+                          {user.role === 'admin' && (
+                            <Crown 
+                              className={`w-4 h-4 drop-shadow-[0_0_8px_rgba(255,221,0,0.5)] ${user.email === 'ukrainerp67@gmail.com' ? 'text-ukraine-yellow scale-125' : 'text-ukraine-yellow opacity-70'}`} 
+                            />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <div className="text-[10px] text-text-dim font-mono tracking-tight opacity-60">ID: {user.uid.slice(0, 12)}...</div>
+                           {online && (
+                             <span className="flex items-center gap-1">
+                               <span className="w-1 h-1 bg-green-500 rounded-full animate-ping" />
+                               <span className="text-[8px] font-black text-green-500 uppercase tracking-widest leading-none">Online</span>
+                             </span>
+                           )}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-mono text-ukraine-yellow font-black">₴{user.balance?.toLocaleString()}</span>
+                      <span className="text-[9px] text-text-dim uppercase font-bold tracking-tighter">На руках</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <div className={`h-1.5 w-12 bg-white/5 rounded-full overflow-hidden border border-white/5`}>
+                         <div className={`h-full rounded-full ${user.socialRating >= 50 ? 'bg-green-500' : user.socialRating > 0 ? 'bg-ukraine-blue' : 'bg-red-500'}`} style={{ width: `${Math.min(100, Math.max(10, Math.abs(user.socialRating)))}%` }} />
+                      </div>
+                      <span className="text-xs font-black text-white">{user.socialRating}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg inline-block w-fit tracking-tighter ${user.role === 'admin' ? (user.email === 'ukrainerp67@gmail.com' ? 'bg-ukraine-yellow/20 text-ukraine-yellow border border-ukraine-yellow/30 shadow-[0_0_15px_rgba(255,221,0,0.2)]' : 'bg-ukraine-blue/20 text-ukraine-blue border border-ukraine-blue/30') : 'bg-white/5 text-text-dim border border-white/10'}`}>
+                        {user.email === 'ukrainerp67@gmail.com' ? 'HEAD ADMIN' : (user.role || 'GUEST')}
+                      </span>
+                      {user.isFrozen && (
+                        <div className="px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-md w-fit">
+                           <span className="text-[8px] font-black uppercase text-red-500 flex items-center gap-1.5 leading-none">
+                            <Lock className="w-2.5 h-2.5" /> ЗАБЛОКОВАНО
+                           </span>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                       <button 
+                        onClick={() => {
+                          if (user.isFrozen) {
+                            handleUnfreeze(user.uid);
+                          } else {
+                            setSelectedUser(user);
+                            setIsFreezing(true);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl transition-all border ${user.isFrozen ? 'bg-ukraine-blue text-white shadow-lg border-ukraine-blue shadow-ukraine-blue/30' : 'bg-white/5 text-text-dim hover:bg-ukraine-blue/20 hover:text-white border-white/5 hover:border-ukraine-blue/30'}`}
+                        title={user.isFrozen ? "Розморозити" : "Заморозити"}
+                      >
+                        <Snowflake className={`w-4 h-4 ${user.isFrozen ? 'animate-pulse' : ''}`} />
+                      </button>
+                       <button 
+                        onClick={() => { setSelectedUser(user); setIsMuting(true); }}
+                        className="p-2.5 bg-white/5 border border-white/5 rounded-xl text-text-dim hover:bg-red-500/20 hover:text-red-400 transition-all hover:border-red-500/30"
+                        title="Мут"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                       <button 
+                        onClick={() => { setSelectedUser(user); setIsEditing(true); }}
+                        className="p-2.5 bg-white/5 border border-white/5 rounded-xl text-text-dim hover:bg-ukraine-yellow/20 hover:text-ukraine-yellow transition-all hover:border-ukraine-yellow/30"
+                        title="Редагувати"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      {adminProfile?.email === 'ukrainerp67@gmail.com' && (
+                        <button 
+                          onClick={() => handleDelete(user.uid)}
+                          className="p-2.5 bg-white/5 border border-white/5 rounded-xl text-text-dim hover:bg-red-600 hover:text-white transition-all hover:shadow-[0_0_15px_rgba(220,38,38,0.3)] shadow-none"
+                          title="Остаточно видалити"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {usersList.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-6 py-12 text-center">
+                  <div className="flex flex-col items-center opacity-30">
+                    <Users className="w-12 h-12 mb-3" />
+                    <p className="text-xs font-black uppercase tracking-[0.2em]">Користувачів не знайдено</p>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 
   if (loading && !users.length) {
@@ -323,105 +507,9 @@ export const AdminView: React.FC = () => {
       </div>
 
       {/* User Management */}
-      <div className="bg-card-dark border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
-        <div className="p-6 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h3 className="text-lg font-black text-white uppercase tracking-tighter flex items-center gap-2">
-            <Shield className="w-5 h-5 text-ukraine-blue" />
-            Керування гравцями
-          </h3>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-dim" />
-            <input 
-              type="text"
-              placeholder="Пошук за ім'ям або ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-black/40 border border-white/10 rounded-xl py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-ukraine-blue w-full md:w-64"
-            />
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white/5 text-[10px] font-black text-text-dim uppercase tracking-widest">
-                <th className="px-6 py-4">Гравець</th>
-                <th className="px-6 py-4">Баланс</th>
-                <th className="px-6 py-4">Рейтинг</th>
-                <th className="px-6 py-4">Роль</th>
-                <th className="px-6 py-4 text-right">Дії</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {filteredUsers.map((user) => (
-                <tr key={user.uid} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold overflow-hidden border border-white/5">
-                        {user.passportPhoto ? <img src={user.passportPhoto} className="w-full h-full object-cover" /> : user.firstName[0]}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-white flex items-center gap-1">
-                          {user.firstName} {user.lastName}
-                          {user.isVerified && <BadgeCheck className="w-3 h-3 text-ukraine-blue" />}
-                        </div>
-                        <div className="text-[10px] text-text-dim font-mono">{user.uid.slice(0, 8)}...</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-xs font-mono text-ukraine-yellow">₴{user.balance.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-xs font-bold text-ukraine-blue">{user.socialRating}</td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${user.role === 'admin' ? 'bg-ukraine-blue/20 text-ukraine-blue' : 'bg-white/10 text-white'}`}>
-                      {user.role || 'user'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                       <button 
-                        onClick={() => {
-                          if (user.isFrozen) {
-                            handleUnfreeze(user.uid);
-                          } else {
-                            setSelectedUser(user);
-                            setIsFreezing(true);
-                          }
-                        }}
-                        className={`p-2 rounded-lg transition-colors ${user.isFrozen ? 'bg-ukraine-blue/20 text-ukraine-blue' : 'hover:bg-blue-500/10 text-text-dim hover:text-blue-400'}`}
-                        title={user.isFrozen ? "Розморозити" : "Заморозити"}
-                      >
-                        <Snowflake className={`w-4 h-4 ${user.isFrozen ? 'animate-pulse' : ''}`} />
-                      </button>
-                       <button 
-                        onClick={() => { setSelectedUser(user); setIsMuting(true); }}
-                        className="p-2 hover:bg-red-500/10 rounded-lg text-text-dim hover:text-red-400 transition-colors"
-                        title="Мут"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </button>
-                       <button 
-                        onClick={() => { setSelectedUser(user); setIsEditing(true); }}
-                        className="p-2 hover:bg-white/10 rounded-lg text-text-dim hover:text-white transition-colors"
-                        title="Редагувати"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      {adminProfile.email === 'ukrainerp67@gmail.com' && (
-                        <button 
-                          onClick={() => handleDelete(user.uid)}
-                          className="p-2 hover:bg-red-500/20 rounded-lg text-text-dim hover:text-red-500 transition-colors"
-                          title="Остаточно видалити"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="space-y-8">
+        {renderUserTable(adminUsers, "Закріплені Адміністратори", <Crown className="w-5 h-5 text-ukraine-yellow" />)}
+        {renderUserTable(regularUsers, "Всі Гравці", <Users className="w-5 h-5 text-ukraine-blue" />)}
       </div>
 
       {/* Edit Modal */}
@@ -500,7 +588,7 @@ export const AdminView: React.FC = () => {
                   {selectedUser.isVerified ? 'ВЕРИФІКОВАНО' : 'НІ'}
                 </button>
               </div>
-              {adminProfile.email === 'ukrainerp67@gmail.com' && (
+              {adminProfile?.email === 'ukrainerp67@gmail.com' && (
                 <div>
                   <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Роль</label>
                   <select 

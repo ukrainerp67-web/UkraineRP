@@ -342,13 +342,26 @@ async function startServer() {
     try {
       // Ensure only admins can see all users
       const requester = await prisma.player.findUnique({ where: { uid: req.user.uid } });
-      if (requester?.role !== 'admin') {
+      if (requester?.role !== 'admin' && requester?.email !== 'ukrainerp67@gmail.com') {
         return res.status(403).json({ error: 'Access denied' });
       }
 
       if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is missing');
-      const users = await prisma.player.findMany();
-      res.json(users || []);
+      
+      const [users, presence] = await Promise.all([
+        prisma.player.findMany(),
+        prisma.presence.findMany()
+      ]);
+
+      const combined = users.map(u => {
+        const p = presence.find(pres => pres.uid === u.uid);
+        return {
+          ...u,
+          lastActive: p ? p.lastActive : null
+        };
+      });
+
+      res.json(combined || []);
     } catch (error: any) {
       console.error('[ADMIN] Error fetching users:', error.message);
       res.json([]); 

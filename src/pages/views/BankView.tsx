@@ -20,14 +20,10 @@ export const BankView: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);
 
-  if (!profile) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 bg-card-dark rounded-3xl border border-white/5 animate-pulse">
-        <Landmark className="w-12 h-12 text-white/10 mb-4" />
-        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest">Завантаження банківської системи...</p>
-      </div>
-    );
-  }
+  // Use local state for notifications instead of alert when possible
+  const showLocalError = (msg: string) => {
+    setCreationError(msg);
+  };
 
   useEffect(() => {
     if (profile?.uid) {
@@ -56,7 +52,7 @@ export const BankView: React.FC = () => {
     } else if (action === 'Карта') {
       const ownedTypes = profile.bankCards?.map((c: any) => c.type) || [];
       if (ownedTypes.length >= 5) {
-        alert("Ви вже володієте всіма можливими типами карт Національного Банку.");
+        showLocalError("Ви вже володієте всіма можливими типами карт Національного Банку.");
         return;
       }
       setShowCardCreator(true);
@@ -71,14 +67,6 @@ export const BankView: React.FC = () => {
       );
     }
   };
-
-  const CARD_TYPES = [
-    { id: 'e-support', name: 'Є-Підтримка від держави', color: 'from-blue-600 to-blue-400', icon: '🇺🇦', desc: 'Для соціальних виплат та допомоги' },
-    { id: 'pension', name: 'Пенсійний фонд', color: 'from-amber-600 to-yellow-500', icon: '🎖️', desc: 'Для пенсійних нарахувань', reqLevel: 35 },
-    { id: 'standard', name: 'Звичайна гривнева карта', color: 'from-zinc-800 to-zinc-600', icon: '💳', desc: 'Універсальна карта для платежів' },
-    { id: 'usd', name: 'Доларова карта', color: 'from-emerald-700 to-green-500', icon: '💵', desc: 'Валютні операції в USD' },
-    { id: 'eur', name: 'Єврова карта', color: 'from-indigo-800 to-blue-700', icon: '💶', desc: 'Валютні операції в EUR' },
-  ];
 
   const handleCreateCard = async () => {
     if (!profile || !selectedCardType) return;
@@ -117,42 +105,34 @@ export const BankView: React.FC = () => {
       console.log('BankView: Card save result:', result);
       
       if (result && result.success) {
-        // Refresh local state immediately with returned user data
-        if (result.user) {
-          updateProfile(result.user);
-        } else {
-          await refreshProfile();
-        }
-        
-        console.log('BankView: Profile updated after card creation');
-        
-        try {
-          await sendNotification(profile.uid, 'Банківська карта', `Вашу карту "${selectedCardType.name}" активовано!`, 'success');
-        } catch (nErr) {
-          console.warn('Notification failed during card creation', nErr);
-        }
-
+        // CLOSE MODAL FIRST to avoid REMOVECHILD errors during re-render
         setShowCardCreator(false);
         resetCreator();
+
+        // Delay profile update slightly to let animation finish nicely
+        setTimeout(async () => {
+          if (result.user) {
+            updateProfile(result.user);
+          } else {
+            await refreshProfile();
+          }
+          
+          try {
+            await sendNotification(profile.uid, 'Банківська карта', `Вашу карту "${selectedCardType.name}" активовано!`, 'success');
+          } catch (nErr) {
+            console.warn('Notification failed during card creation', nErr);
+          }
+        }, 100);
       } else {
         const errMsg = result?.error || "Невідома помилка сервера";
         setCreationError(`Помилка: ${errMsg}`);
-        alert("Помилка при збереженні карти: " + errMsg);
       }
     } catch (error) {
       console.error('Card creation error:', error);
-      alert('Сталася помилка при створенні карти.');
+      setCreationError('Сталася помилка при створенні карти. Спробуйте пізніше.');
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const resetCreator = () => {
-    setSelectedCardType(null);
-    setStep(1);
-    setPassportId('');
-    setSignature('');
-    setCreationError(null);
   };
 
   const handlePayFine = async () => {
@@ -160,12 +140,12 @@ export const BankView: React.FC = () => {
     
     const card = profile.bankCards?.find((c: any) => c.number === selectedCardId);
     if (!card) {
-      alert("Картку не знайдено");
+      showLocalError("Картку не знайдено");
       return;
     }
 
     if (card.balance < selectedFine.amount) {
-      alert("Недостатньо коштів на цій карті");
+      showLocalError("Недостатньо коштів на цій карті");
       return;
     }
 
@@ -174,20 +154,39 @@ export const BankView: React.FC = () => {
       const result = await backend.payFine(profile.uid, selectedFine.id, selectedFine.amount, selectedCardId);
       
       if (result.success) {
-        await refreshProfile();
         setShowFinePayment(false);
         setSelectedFine(null);
         setSelectedCardId('');
-        alert("Штраф успішно оплачено! Гроші зараховані до Державного Бюджету.");
+        
+        setTimeout(() => {
+          refreshProfile();
+          sendNotification(profile.uid, 'Штраф сплачено', `Штраф на суму ₴${selectedFine.amount.toLocaleString()} успішно оплачено.`, 'success');
+        }, 100);
       } else {
-        alert("Помилка при оплаті штрафу");
+        showLocalError("Помилка при оплаті штрафу");
       }
     } catch (error: any) {
        console.error("Fine payment error", error);
-       alert("Помилка при оплаті штрафу: " + (error.message || "Невідома помилка"));
+       showLocalError("Помилка при оплаті штрафу: " + (error.message || "Невідома помилка"));
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const CARD_TYPES = [
+    { id: 'e-support', name: 'Є-Підтримка від держави', color: 'from-blue-600 to-blue-400', icon: '🇺🇦', desc: 'Для соціальних виплат та допомоги' },
+    { id: 'pension', name: 'Пенсійний фонд', color: 'from-amber-600 to-yellow-500', icon: '🎖️', desc: 'Для пенсійних нарахувань', reqLevel: 35 },
+    { id: 'standard', name: 'Звичайна гривнева карта', color: 'from-zinc-800 to-zinc-600', icon: '💳', desc: 'Універсальна карта для платежів' },
+    { id: 'usd', name: 'Доларова карта', color: 'from-emerald-700 to-green-500', icon: '💵', desc: 'Валютні операції в USD' },
+    { id: 'eur', name: 'Єврова карта', color: 'from-indigo-800 to-blue-700', icon: '💶', desc: 'Валютні операції в EUR' },
+  ];
+
+  const resetCreator = () => {
+    setSelectedCardType(null);
+    setStep(1);
+    setPassportId('');
+    setSignature('');
+    setCreationError(null);
   };
 
   const actions = [
@@ -246,7 +245,14 @@ export const BankView: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-8">
-      <header className="flex flex-col sm:flex-row justify-between items-center bg-card-dark p-5 md:p-6 rounded-xl border border-border-dark relative overflow-hidden gap-4">
+      {!profile ? (
+        <div className="flex flex-col items-center justify-center p-12 bg-card-dark rounded-3xl border border-white/5 animate-pulse">
+          <Landmark className="w-12 h-12 text-white/10 mb-4" />
+          <p className="text-[10px] font-black text-white/20 uppercase tracking-widest">Завантаження банківської системи...</p>
+        </div>
+      ) : (
+        <>
+          <header className="flex flex-col sm:flex-row justify-between items-center bg-card-dark p-5 md:p-6 rounded-xl border border-border-dark relative overflow-hidden gap-4">
         <div className="relative z-10 text-center sm:text-left">
           <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter flex items-center justify-center sm:justify-start gap-3 text-white">
             <Landmark className="w-6 h-6 md:w-8 md:h-8 text-yellow-400" />
@@ -256,7 +262,7 @@ export const BankView: React.FC = () => {
         </div>
         <div className="text-center sm:text-right relative z-10 w-full sm:w-auto bg-bg-dark/50 sm:bg-transparent p-3 sm:p-0 rounded-xl border sm:border-0 border-white/5">
           <p className="text-[9px] md:text-[10px] uppercase font-bold text-gray-500 mb-1">Головний баланс</p>
-          <p className="text-2xl md:text-3xl font-black text-white">{profile?.balance.toLocaleString()} ₴</p>
+          <p className="text-2xl md:text-3xl font-black text-white">{(profile?.balance || 0).toLocaleString()} ₴</p>
         </div>
         <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/5 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl pointer-events-none" />
       </header>
@@ -265,18 +271,18 @@ export const BankView: React.FC = () => {
         <section className="space-y-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Ваші активи</h3>
           <div className="flex flex-col items-center">
-            {profile?.bankCards && Array.isArray(profile.bankCards) && profile.bankCards.length > 0 ? (
-              <div className="w-full flex overflow-x-auto gap-4 py-4 px-2 snap-x custom-scrollbar">
-                {profile.bankCards.map((card: any, idx: number) => {
-                  if (!card) return null;
-                  return (
-                    <div key={card.number || idx} className="snap-center shrink-0">
-                      {renderCard(card)}
+                  {profile?.bankCards && Array.isArray(profile.bankCards) && profile.bankCards.length > 0 ? (
+                    <div className="w-full flex overflow-x-auto gap-4 py-4 px-2 snap-x custom-scrollbar">
+                      {profile.bankCards.map((card: any, idx: number) => {
+                        if (!card) return null;
+                        return (
+                          <div key={card.number || `card-${idx}`} className="snap-center shrink-0">
+                            {renderCard(card)}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
+                  ) : (
               <div className="w-full aspect-[1.58/1] rounded-2xl border-2 border-dashed border-white/5 flex flex-col items-center justify-center bg-white/2 space-y-2 opacity-50 grayscale">
                 <CreditCard className="w-8 h-8 text-white/20" />
                 <p className="text-[10px] uppercase font-black tracking-widest text-white/20">Немає активних карт</p>
@@ -363,8 +369,8 @@ export const BankView: React.FC = () => {
                 <div className="space-y-6">
                   <p className="text-xs text-text-muted">Виберіть тип карти, який ви бажаєте відкрити. Кожен тип карти можна мати лише в одному екземплярі:</p>
                   <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                    {CARD_TYPES.filter(t => !(profile.bankCards?.some((c: any) => c.type === t.id))).map(type => {
-                      const isLocked = type.reqLevel && (profile.level || 0) < type.reqLevel;
+                    {CARD_TYPES.filter(t => !(profile?.bankCards?.some((c: any) => c.type === t.id))).map(type => {
+                      const isLocked = type.reqLevel && (profile?.level || 0) < type.reqLevel;
                       return (
                         <button
                           key={type.id}
@@ -602,6 +608,8 @@ export const BankView: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+        </>
+      )}
     </div>
   );
 };

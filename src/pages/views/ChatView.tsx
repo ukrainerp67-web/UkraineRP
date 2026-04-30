@@ -206,7 +206,7 @@ export const ChatView: React.FC = () => {
                   {msg.senderPhoto ? (
                     <img src={msg.senderPhoto} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <div className="w-full h-full bg-secondary-dark flex items-center justify-center text-[6px] md:text-[8px] font-black uppercase">
+                    <div className="w-full h-full bg-secondary-dark flex items-center justify-center text-[7px] md:text-[10px] font-black uppercase">
                       {msg.senderName?.charAt(0) || '?'}
                     </div>
                   )}
@@ -308,7 +308,7 @@ export const ChatView: React.FC = () => {
                       <img src={selectedUser.passportPhoto} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-4xl font-black text-text-dim">
-                        {selectedUser.firstName[0]}
+                        {selectedUser.firstName?.charAt(0) || '?'}
                       </div>
                     )}
                   </div>

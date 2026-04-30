@@ -26,7 +26,7 @@ if (process.env.DATABASE_URL) {
 }
 
 console.log('[STARTUP] Starting the main server...');
-spawnSync('node', ['server.ts'], { 
+spawnSync('npx', ['tsx', 'server.ts'], { 
   stdio: 'inherit', 
   env: process.env,
   shell: true 

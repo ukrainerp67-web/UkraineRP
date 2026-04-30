@@ -42,18 +42,27 @@ export const PayDaySystem: React.FC = () => {
 
             setTimeLeft(prev => {
                 if (prev <= 0) {
-                    // Check rating before paying
-                    backend.getGlobalState().then(state => {
-                        if (state.trustRating >= 20) {
-                             backend.triggerPayDay(profile.uid);
-                        } else {
-                             backend.sendNotification(profile.uid, {
-                                title: '❌ Виплата заблокована',
-                                message: 'Через критично низький рейтинг довіри (Майдан), виплати зарплат тимчасово призупинено!',
-                                type: 'error'
-                             });
-                        }
-                    });
+                        // Check rating before paying
+                        backend.getGlobalState().then(state => {
+                            const isGovRole = profile.role === 'Президент' || 
+                                              profile.role === "Прем'єр Міністр" || 
+                                              profile.role === "Прем'єр міністр" || 
+                                              profile.role === "Прем'єр-міністр" || 
+                                              profile.role === 'Міністр фінансів' ||
+                                              profile.role === 'Депутат' || 
+                                              profile.role === 'Працівник ВФБ' ||
+                                              profile.role === 'rada';
+
+                            if (state.trustRating >= 20 || !isGovRole) {
+                                 backend.triggerPayDay(profile.uid);
+                            } else {
+                                 backend.sendNotification(profile.uid, {
+                                    title: '❌ Виплата заблокована',
+                                    message: 'Через критично низький рейтинг довіри (Майдан), виплати зарплат для посадовців тимчасово призупинено!',
+                                    type: 'error'
+                                 });
+                            }
+                        });
                     
                     return 15 * 60; 
                 }
@@ -74,7 +83,7 @@ export const PayDaySystem: React.FC = () => {
             stateUnsub();
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [profile?.uid, profile?.lastPayDay]);
+    }, [profile?.uid, profile?.lastPayDay, profile?.role]);
 
     // This component renders nothing but handles the logic
     // You could turn this into a HUD element later if needed

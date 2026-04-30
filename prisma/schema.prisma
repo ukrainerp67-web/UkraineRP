@@ -8,17 +8,82 @@ datasource db {
 }
 
 model Player {
-  id           String   @id @default(uuid())
-  username     String   @unique
-  email        String   @unique
-  passwordHash String
-  balance      Float    @default(0.0)
-  level        Int      @default(1)
-  xp           Int      @default(0)
-  inventory    InventoryItem[]
-  achievements PlayerAchievement[]
-  createdAt    DateTime @default(now())
-  lastLogin    DateTime @updatedAt
+  id               String   @id @default(uuid())
+  uid              String   @unique // Для зв'язку з Firebase Auth або внутрішнім ID
+  username         String   @unique
+  email            String   @unique
+  passwordHash     String?  // Може бути null, якщо використовується Firebase Auth
+  firstName        String?
+  lastName         String?
+  sex              String?
+  birthDate        String?
+  passportPhoto    String?  @default("")
+  signature        String?  @default("")
+  balance          Float    @default(1000.0)
+  level            Int      @default(1)
+  xp               Int      @default(0)
+  socialRating     Int      @default(0)
+  status           String   @default("Громадянин")
+  role             String   @default("user")
+  isVerified       Boolean  @default(false)
+  isFrozen         Boolean  @default(false)
+  freezeUntil      String?
+  freezeReason     String?
+  muteUntil        String?
+  
+  // Складні дані зберігаємо як JSON (Призма підтримує Json тип для PostgreSQL)
+  bankCards        Json     @default("[]")
+  properties       Json     @default("[]")
+  inventory        Json     @default("[]")
+  inventoryItems   InventoryItem[]
+  achievements     PlayerAchievement[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  lastLogin        DateTime @default(now())
+}
+
+model SystemConfig {
+  id          String   @id @default("global")
+  budget      Float    @default(1000000)
+  taxRate     Float    @default(0.20)
+  trustRating Int      @default(60)
+  updatedAt   DateTime @updatedAt
+}
+
+model GlobalEvent {
+  id        Int      @id @default(autoincrement())
+  type      String
+  message   String
+  player    String?
+  timestamp DateTime @default(now())
+}
+
+model Fine {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  amount    Int
+  reason    String
+  issuedAt  DateTime @default(now())
+  deadline  String?
+  status    String   @default("pending")
+  paidAt    DateTime?
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  title     String
+  message   String
+  type      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Presence {
+  uid        String   @id
+  lastActive DateTime @default(now())
+  status     String   @default("online")
 }
 
 model Item {

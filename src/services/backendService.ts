@@ -63,7 +63,8 @@ class BackendService {
   private async syncOnlinePlayers() {
      try {
        const res = await fetch('/api/online');
-       const players = await res.json();
+       const data = await res.json();
+       const players = Array.isArray(data) ? data : [];
        if (this.playersUpdateCallback) this.playersUpdateCallback(players);
      } catch (e) { /* ignore silent failure */ }
   }
@@ -79,7 +80,8 @@ class BackendService {
   private async syncMessages() {
     try {
       const res = await fetch('/api/messages');
-      const messages = await res.json();
+      const data = await res.json();
+      const messages = Array.isArray(data) ? data : [];
       if (this.messageCallback) {
         messages.forEach((msg: any) => {
           if (msg.id > this.lastProcessedMessageId) {
@@ -227,9 +229,10 @@ class BackendService {
     if (this.eventsInterval) clearInterval(this.eventsInterval);
     this.eventsInterval = setInterval(async () => {
       const res = await fetch('/api/events');
-      callback(await res.json());
+      const data = await res.json();
+      callback(Array.isArray(data) ? data : []);
     }, 15000);
-    fetch('/api/events').then(res => res.json()).then(callback);
+    fetch('/api/events').then(res => res.json()).then(data => callback(Array.isArray(data) ? data : []));
     return () => clearInterval(this.eventsInterval);
   }
 
@@ -321,7 +324,8 @@ class BackendService {
   async getFines(userId: string) {
     try {
       const res = await fetch(`/api/users/${userId}/fines`);
-      return await res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     } catch (e) { return []; }
   }
 
@@ -439,8 +443,11 @@ class BackendService {
   }
 
   async getChatHistory() {
-    const res = await fetch('/api/messages');
-    return await res.json();
+    try {
+      const res = await fetch('/api/messages');
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) { return []; }
   }
 
   async adminUpdateUser(targetId: string, updates: any, adminName?: string) {
@@ -476,11 +483,14 @@ class BackendService {
       try {
         const res = await fetch('/api/admin/users');
         if (res.ok) {
-          const users = await res.json();
-          callback(users);
+          const data = await res.json();
+          callback(Array.isArray(data) ? data : []);
+        } else {
+          callback([]);
         }
       } catch (e) {
         console.error('onAdminUsersUpdate error:', e);
+        callback([]);
       }
     };
     const interval = setInterval(update, 10000);

@@ -38,7 +38,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activeToast, setActiveToast] = useState<Notification | null>(null);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = Array.isArray(notifications) ? notifications.filter(n => !n.read).length : 0;
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -49,7 +49,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const fetchNotifications = async () => {
        try {
          const res = await fetch(`/api/users/${profile.uid}/notifications`);
-         const newNotifs = await res.json();
+         const data = await res.json();
+         const newNotifs = Array.isArray(data) ? data : [];
          
          // Check for new unread notifications to show toast
          const latest = newNotifs[0];
@@ -61,6 +62,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
          setNotifications(newNotifs);
        } catch (e) {
          console.warn("Notification sync error", e);
+         setNotifications([]);
        }
     };
 
@@ -101,7 +103,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const markAllAsRead = async () => {
     if (!profile?.uid) return;
     try {
-      const unread = notifications.filter(n => !n.read);
+      const unread = Array.isArray(notifications) ? notifications.filter(n => !n.read) : [];
       await Promise.all(unread.map(n => fetch(`/api/notifications/${n.id}/read`, { method: 'PATCH' })));
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     } catch (error) {

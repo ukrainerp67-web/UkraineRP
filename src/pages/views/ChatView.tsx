@@ -97,7 +97,7 @@ export const ChatView: React.FC = () => {
     }
   };
 
-  const filteredMessages = messages.filter(msg => {
+  const filteredMessages = (Array.isArray(messages) ? messages : []).filter(msg => {
     const queryStr = searchQuery.toLowerCase();
     
     // Simple filter for public messages in this basic logic

@@ -24,8 +24,9 @@ export async function registerPlayer(username: string, email: string, passwordPl
     data: {
       username,
       email,
+      uid: `INTERNAL-${Date.now()}`, // Generate a temporary UID if not provided
       passwordHash,
-      balance: 1000.0, // Початковий капітал
+      balance: 1000.0,
     }
   });
 }

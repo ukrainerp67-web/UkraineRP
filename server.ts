@@ -53,18 +53,36 @@ const authenticateToken = (req: any, res: any, next: any) => {
   jwt.verify(token, JWT_SECRET, async (err: any, user: any) => {
     if (err) return res.status(403).json({ error: 'Token invalid or expired' });
     
-    // Immediate kick check: verify user still exists in DB
+    req.user = user;
+    
     try {
       const dbUser = await prisma.player.findUnique({ where: { uid: user.uid } });
-      if (!dbUser) {
+      
+      // Routes allowed even if user is not in DB (Registration flow)
+      const path = req.path;
+      const method = req.method;
+      
+      const isProfileRoute = path.startsWith('/api/profile');
+      const isAuthMe = path === '/api/auth/me';
+      const isPresence = path.startsWith('/api/presence');
+      const isOnline = path === '/api/online';
+      const isMessages = path === '/api/messages';
+      const isHealth = path === '/api/health';
+      const isNotifications = path.includes('/notifications');
+
+      const isDiscovery = isProfileRoute || isAuthMe || isPresence || isOnline || isMessages || isHealth || isNotifications;
+
+      if (!dbUser && !isDiscovery) {
         console.warn(`[AUTH] Kicking user ${user.uid} - not found in database.`);
         return res.status(401).json({ error: 'Ваш акаунт було видалено. Перенаправлення...' });
       }
+
       req.user = user;
+      req.dbUser = dbUser;
       next();
     } catch (e) {
       console.error('Auth verification error:', e);
-      return res.status(500).json({ error: 'Database connection error during auth' });
+      return res.status(500).json({ error: 'Database error during auth' });
     }
   });
 };
@@ -271,7 +289,14 @@ async function startServer() {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       const player = await prisma.player.findUnique({ where: { uid: decoded.uid } });
-      if (!player) return res.status(401).json({ error: 'Користувач не знайдений або був видалений' });
+      
+      if (!player) {
+        return res.json({ 
+          user: { uid: decoded.uid, email: decoded.email }, 
+          isNewUser: true 
+        });
+      }
+
       res.json({ user: { uid: player.uid, email: player.email } });
     } catch (e) {
       res.status(401).json({ error: 'Сесія завершена, увійдіть знову' });
@@ -309,7 +334,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/profile/:uid', async (req, res) => {
+  app.get('/api/profile/:uid', authenticateToken, async (req: any, res) => {
     const uid = req.params.uid;
     const email = req.query.email as string;
     console.log(`[PROFILE] Fetching uid=${uid}, email=${email}`);
@@ -345,8 +370,11 @@ async function startServer() {
     }
   });
 
-  app.post('/api/profile', async (req, res) => {
+  app.post('/api/profile', authenticateToken, async (req: any, res) => {
     const { uid, email, firstName, lastName, sex, birthDate, passportPhoto, signature, role, status, balance, socialRating, bankCards, businesses, properties, inventory, isVerified } = req.body;
+    
+    // Security: uid must match authenticated user
+    if (req.user.uid !== uid) return res.status(403).json({ error: 'UID mismatch' });
     console.log(`[PROFILE] Attempting to save user: ${uid} (${email})`);
 
     try {
@@ -413,9 +441,13 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/profile/:uid', async (req, res) => {
+  app.patch('/api/profile/:uid', authenticateToken, async (req: any, res) => {
     const updates = req.body;
     const uid = req.params.uid;
+    
+    // Security: Only self or admin
+    const isAdmin = req.dbUser && req.dbUser.role === 'admin';
+    if (req.user.uid !== uid && !isAdmin) return res.status(403).json({ error: 'Identity mismatch' });
     try {
       const user = await prisma.player.update({
         where: { uid },
@@ -456,7 +488,9 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/system/global', async (req, res) => {
+  app.patch('/api/system/global', authenticateToken, async (req: any, res) => {
+    const isAdmin = req.dbUser && req.dbUser.role === 'admin';
+    if (!isAdmin) return res.status(403).json({ error: 'Admin only' });
     const { budget, taxRate, trustRating } = req.body;
     try {
       const state = await prisma.systemConfig.update({
@@ -565,8 +599,10 @@ async function startServer() {
   });
 
   // Transfer Money (Atomic)
-  app.post('/api/transfer', async (req, res) => {
+  app.post('/api/transfer', authenticateToken, async (req: any, res) => {
     const { fromId, toId, amount } = req.body;
+    
+    if (req.user.uid !== fromId) return res.status(403).json({ error: 'Identity mismatch' });
     try {
       const result = await prisma.$transaction(async (tx) => {
         const fromUser = await tx.player.findUnique({ where: { uid: fromId } });
@@ -586,7 +622,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users/:uid/fines', async (req, res) => {
+  app.post('/api/users/:uid/fines', authenticateToken, async (req: any, res) => {
+    // Only officials can issue fines (or admin)
+    const isOfficial = req.dbUser && (['admin', 'Президент', 'Депутат', 'Поліція'].includes(req.dbUser.role) || req.dbUser.status === 'Поліція');
+    if (!isOfficial) return res.status(403).json({ error: 'Official only' });
     const { amount, reason, deadline } = req.body;
     try {
       await prisma.fine.create({
@@ -598,7 +637,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/fines/:id', async (req, res) => {
+  app.patch('/api/fines/:id', authenticateToken, async (req: any, res) => {
     const { status } = req.body;
     try {
       await prisma.fine.update({
@@ -694,7 +733,10 @@ async function startServer() {
     }
   });
 
-  app.get('/api/users/:uid/fines', async (req, res) => {
+  app.get('/api/users/:uid/fines', authenticateToken, async (req: any, res) => {
+    if (req.user.uid !== req.params.uid && req.dbUser?.role !== 'admin') {
+      return res.status(403).json({ error: 'Identity mismatch' });
+    }
     try {
       const fines = await prisma.fine.findMany({
         where: { userId: req.params.uid },

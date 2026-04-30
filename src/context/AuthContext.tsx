@@ -314,8 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Detection of deletion: if we previously had a profile and now it's gone
             if (hadProfile && !profileData) {
               console.log("[AUTH] Profile deleted. Kicking user...");
-              backend.logout();
-              window.location.href = '/'; 
+              logout();
               return;
             }
             

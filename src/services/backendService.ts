@@ -30,10 +30,10 @@ class BackendService {
       this.syncOnlinePlayers();
     }
     if (!this.notificationsInterval) {
-      this.notificationsInterval = setInterval(() => this.syncNotifications(uid), 10000);
+      this.notificationsInterval = setInterval(() => this.syncNotifications(uid), 2000);
     }
     if (!this.messagesInterval) {
-      this.messagesInterval = setInterval(() => this.syncMessages(), 4000);
+      this.messagesInterval = setInterval(() => this.syncMessages(), 2000);
     }
   }
 
@@ -205,7 +205,7 @@ class BackendService {
     this.globalInterval = setInterval(async () => {
       const state = await this.getGlobalState();
       callback(state);
-    }, 10000);
+    }, 3000);
     this.getGlobalState().then(callback);
     return () => clearInterval(this.globalInterval);
   }
@@ -434,7 +434,7 @@ class BackendService {
       const fines = await this.getFines(userId);
       callback(fines);
     };
-    const interval = setInterval(update, 10000);
+    const interval = setInterval(update, 3000);
     update();
     return () => clearInterval(interval);
   }

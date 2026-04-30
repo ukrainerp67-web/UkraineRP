@@ -67,7 +67,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
 
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 10000);
+    const interval = setInterval(fetchNotifications, 2000);
     return () => clearInterval(interval);
   }, [profile?.uid, notifications.length]);
 

@@ -215,7 +215,7 @@ class BackendService {
       const profile = await this.getProfile(uid, email || undefined);
       callback(profile); // Call even if null so subscriber knows fetch finished
     };
-    const interval = setInterval(update, 2000); // Faster polling for better UX
+    const interval = setInterval(update, 1000); // Super fast polling for real-time admin actions
     update();
     return () => clearInterval(interval);
   }
@@ -513,7 +513,7 @@ class BackendService {
         callback([]);
       }
     };
-    const interval = setInterval(update, 10000);
+    const interval = setInterval(update, 4000);
     update();
     return () => clearInterval(interval);
   }

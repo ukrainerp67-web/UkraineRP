@@ -310,6 +310,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           profileUnsubscribe = backend.onProfileUpdate(data.user.uid, data.user.email, (profileData) => {
+            // If we had a profile and now it's gone, it means the account was deleted by admin
+            if (user && profile && !profileData) {
+              window.location.reload(); // Hard reset on deletion
+              return;
+            }
+            
             // Set user and profile together when profile is found
             setUser(data.user);
             setProfile(profileData);

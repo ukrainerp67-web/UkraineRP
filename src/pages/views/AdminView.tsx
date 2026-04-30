@@ -26,38 +26,53 @@ export const AdminView: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    const unsubscribe = backend.onAdminUsersUpdate((usersData) => {
-      setUsers(usersData);
-      
-      // Calculate stats locally
-      const totalPlayers = usersData.length;
-      const totalEconomy = usersData.reduce((acc, u) => acc + (Number(u.balance) || 0), 0);
-      const avgSocialRating = usersData.length > 0 
-        ? usersData.reduce((acc, u) => acc + (Number(u.socialRating) || 0), 0) / usersData.length 
-        : 0;
+    let interval: any;
+    
+    const update = async () => {
+      try {
+        const res = await fetch('/api/admin/users');
+        if (res.ok) {
+          const data = await res.json();
+          setUsers(data);
+          
+          // Calculate stats
+          const totalPlayers = data.length;
+          const totalEconomy = data.reduce((acc: number, u: any) => acc + (Number(u.balance) || 0), 0);
+          const fiveMinsAgo = Date.now() - 5 * 60 * 1000;
+          const onlineNow = data.filter((u: any) => {
+            if (!u.lastActive) return false;
+            const time = new Date(u.lastActive).getTime();
+            return time > fiveMinsAgo;
+          }).length;
 
-      // Online check (users with activity in last 5 mins)
-      const fiveMinsAgo = Date.now() - 5 * 60 * 1000;
-      const onlineNow = usersData.filter(u => {
-        if (!u.lastActive) return false;
-        const time = u.lastActive.toMillis ? u.lastActive.toMillis() : new Date(u.lastActive).getTime();
-        return time > fiveMinsAgo;
-      }).length;
+          setStats({
+            totalPlayers,
+            totalEconomy,
+            onlineNow,
+            avgSocialRating: data.length > 0 ? data.reduce((acc: number, u: any) => acc + (Number(u.socialRating) || 0), 0) / data.length : 0
+          });
+        }
+      } catch (e) {
+        console.error('Fetch admin users error:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-      setStats({
-        totalPlayers,
-        totalEconomy,
-        onlineNow,
-        avgSocialRating
-      });
-      setLoading(false);
-    });
+    update();
+    interval = setInterval(update, 4000);
 
-    return () => unsubscribe();
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchData = () => {
-    // No longer needed as it's real-time, but keep it empty if called elsewhere
+  const fetchData = async () => {
+    try {
+      const res = await fetch('/api/admin/users');
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch (e) {}
   };
 
   const handleUpdateUser = async (e: React.FormEvent) => {
@@ -115,7 +130,7 @@ export const AdminView: React.FC = () => {
 
       alert('Дані оновлено!');
       setIsEditing(false);
-      fetchData();
+      await fetchData();
     } catch (error) {
       console.error('Update error:', error);
       alert('Помилка оновлення');
@@ -141,6 +156,7 @@ export const AdminView: React.FC = () => {
       );
       alert(`Мут видано на ${muteDuration} хв!`);
       setIsMuting(false);
+      await fetchData();
     } catch (error) {
       console.error('Mute error:', error);
       alert('Помилка видачі муту');
@@ -166,6 +182,7 @@ export const AdminView: React.FC = () => {
       );
       alert(`Акаунт заморожено!`);
       setIsFreezing(false);
+      await fetchData();
     } catch (error) {
       console.error('Freeze error:', error);
       alert('Помилка заморозки акаунта');
@@ -178,6 +195,7 @@ export const AdminView: React.FC = () => {
       const adminName = `${adminProfile.firstName || 'Admin'} ${adminProfile.lastName || ''}`.trim();
       await backend.adminUnfreezeUser(uid, adminName);
       alert('Акаунт розморожено!');
+      await fetchData();
     } catch (error) {
       console.error('Unfreeze error:', error);
       alert('Помилка розморозки');
@@ -190,7 +208,7 @@ export const AdminView: React.FC = () => {
     try {
       await backend.adminDeleteUser(uid);
       alert('Акаунт видалено');
-      fetchData();
+      await fetchData();
     } catch (error) {
       console.error('Delete error:', error);
       alert('Помилка видалення');

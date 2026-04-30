@@ -148,8 +148,13 @@ export const Registration: React.FC = () => {
         role: 'user'
       };
       
-      await backend.saveProfile(profileData);
-      // AuthContext real-time listener will pick up the change
+      const result = await backend.saveProfile(profileData);
+      if (result.success || result.uid) {
+        await refreshProfile();
+        // The App.tsx will notice profile is no longer null and show Dashboard
+      } else {
+        throw new Error(result.error || 'Невідома помилка сервера');
+      }
     } catch (error: any) {
       console.error('Error saving profile:', error);
       let errorMsg = 'Помилка збереження профілю';

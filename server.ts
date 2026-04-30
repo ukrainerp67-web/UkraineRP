@@ -139,7 +139,7 @@ async function startServer() {
 
   // --- Auth Routes (Replacement for Firebase) ---
   app.post('/api/auth/register', async (req, res) => {
-    const { email, password, username, firstName, lastName } = req.body;
+    const { email, password, username, firstName, lastName, sex, birthDate, signature } = req.body;
     try {
       const existingUser = await prisma.player.findUnique({ where: { email } });
       if (existingUser) {
@@ -148,6 +148,7 @@ async function startServer() {
 
       const hashedPassword = await bcrypt.hash(password, 10);
       const uid = `up-${Math.random().toString(36).substring(2, 11)}`;
+      const isAdmin = email.toLowerCase() === 'ukrainerp67@gmail.com';
       
       const player = await prisma.player.create({
         data: {
@@ -157,19 +158,32 @@ async function startServer() {
           passwordHash: hashedPassword,
           firstName: firstName || 'Гість',
           lastName: lastName || 'України',
-          balance: 5000,
-          socialRating: 50,
-          status: 'Громадянин',
-          role: email === 'ukrainerp67@gmail.com' ? 'admin' : 'user',
-          isVerified: email === 'ukrainerp67@gmail.com'
+          sex: sex || 'M',
+          birthDate: birthDate || '2000-01-01',
+          signature: signature || '',
+          balance: isAdmin ? 10000000 : 5000,
+          socialRating: isAdmin ? 1000 : 50,
+          status: isAdmin ? 'Головний Адмін' : 'Громадянин',
+          role: isAdmin ? 'admin' : 'user',
+          isVerified: isAdmin,
+          bankCards: isAdmin ? [
+            {
+              type: 'standard',
+              number: '0000 0000 0000 0001',
+              balance: 10000000,
+              label: 'Держ Карта',
+              createdAt: new Date().toISOString(),
+              passportId: `UA-${uid.toUpperCase()}`
+            }
+          ] : []
         }
       });
 
-      const token = jwt.sign({ uid: player.uid, email: player.email }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ uid: player.uid, email: player.email }, JWT_SECRET, { expiresIn: '14d' });
       res.json({ success: true, token, user: { uid: player.uid, email: player.email } });
     } catch (e: any) {
       console.error('[AUTH] Register error:', e.message);
-      res.status(400).json({ success: false, error: 'Цей Gmail вже зареєстрований або дані некоректні' });
+      res.status(400).json({ success: false, error: 'Помилка реєстрації. Перевірте з\'єднання з БД.' });
     }
   });
 
@@ -267,8 +281,12 @@ async function startServer() {
     console.log(`[PROFILE] Attempting to save user: ${uid} (${email})`);
 
     try {
+      const isAdmin = email?.toLowerCase() === 'ukrainerp67@gmail.com';
+      const userRole = isAdmin ? 'admin' : (role || 'user');
+      const userStatus = isAdmin ? 'Головний Адмін' : (status || 'Громадянин');
+      const userBalance = isAdmin && (!balance || balance < 1000000) ? 10000000 : (balance !== undefined ? balance : 5000);
+
       // Ensure we don't have unique constraint conflicts on username
-      // We'll use email or uid as a fallback for the unique username field
       const generatedUsername = email ? email.split('@')[0] + '-' + uid.substring(0, 5) : `user-${uid.substring(0, 8)}`;
 
       const user = await prisma.player.upsert({
@@ -281,14 +299,14 @@ async function startServer() {
           birthDate, 
           passportPhoto, 
           signature,
-          role: role || undefined,
-          status: status || undefined,
-          balance: balance !== undefined ? balance : undefined,
+          role: userRole,
+          status: userStatus,
+          balance: userBalance,
           socialRating: socialRating !== undefined ? socialRating : undefined,
           bankCards: bankCards || undefined,
           properties: properties || undefined,
           inventory: inventory || undefined,
-          isVerified: isVerified !== undefined ? !!isVerified : undefined,
+          isVerified: isAdmin || isVerified,
           updatedAt: new Date(),
           lastLogin: new Date()
         },
@@ -302,14 +320,14 @@ async function startServer() {
           birthDate, 
           passportPhoto, 
           signature,
-          role: role || 'user',
-          status: status || 'Громадянин',
-          balance: balance || 5000,
+          role: userRole,
+          status: userStatus,
+          balance: userBalance,
           socialRating: socialRating || 50,
           bankCards: bankCards || [],
           properties: properties || [],
           inventory: inventory || [],
-          isVerified: !!isVerified
+          isVerified: isAdmin || isVerified
         }
       });
       console.log(`[PROFILE] Success for ${uid}`);
@@ -319,7 +337,7 @@ async function startServer() {
       res.status(500).json({ 
         success: false, 
         error: error.message,
-        code: error.code // Prisma error codes are helpful (e.g. P2002)
+        code: error.code
       });
     }
   });

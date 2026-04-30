@@ -48,18 +48,25 @@ const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) return res.status(401).json({ error: 'Token missing' });
+  if (!token) {
+    if (req.path.includes('/auth/me')) {
+       return next(); // Let /auth/me handle missing tokens gracefully
+    }
+    return res.status(401).json({ error: 'Сесія завершена, увійдіть знову' });
+  }
 
   jwt.verify(token, JWT_SECRET, async (err: any, user: any) => {
-    if (err) return res.status(403).json({ error: 'Token invalid or expired' });
+    if (err) {
+      console.warn(`[AUTH] Token invalid for ${req.path}: ${err.message}`);
+      return res.status(401).json({ error: 'Сесія завершена, увійдіть знову' });
+    }
     
     req.user = user;
     
     try {
       const dbUser = await prisma.player.findUnique({ where: { uid: user.uid } });
       
-      // Routes allowed even if user is not in DB (Registration flow)
-      const path = req.path;
+      const path = req.path || '';
       const method = req.method;
       
       const isProfileRoute = path.includes('/profile');
@@ -69,20 +76,28 @@ const authenticateToken = (req: any, res: any, next: any) => {
       const isMessages = path.includes('/messages');
       const isHealth = path.includes('/health');
       const isNotifications = path.includes('/notifications');
+      const isEvents = path.includes('/events');
+      const isGlobal = path.includes('/system/global');
+      const isFines = path.includes('/fines');
+      const isConfig = path.includes('/config');
+      const isRegistration = path.includes('/register');
 
-      const isDiscovery = isProfileRoute || isAuthMe || isPresence || isOnline || isMessages || isHealth || isNotifications;
+      const isDiscovery = isProfileRoute || isAuthMe || isPresence || isOnline || isMessages || isHealth || isNotifications || isEvents || isGlobal || isFines || isConfig || isRegistration;
 
       if (!dbUser && !isDiscovery) {
-        console.warn(`[AUTH] Kicking user ${user.uid} - not found in database. Path: ${path}`);
-        return res.status(401).json({ error: 'Профіль не знайдено. Будь ласка, завершіть реєстрацію.' });
+        console.warn(`[AUTH] Restricted route access: ${method} ${path} - User ${user.uid} not in DB`);
+        return res.status(403).json({ 
+          error: 'У вас немає ігрового профілю. Будь ласка, завершіть реєстрацію персонажу.',
+          isNewUser: true
+        });
       }
 
-      req.user = user;
       req.dbUser = dbUser;
       next();
     } catch (e) {
       console.error('Auth verification error:', e);
-      return res.status(500).json({ error: 'Database error during auth' });
+      // Fallback for transient DB issues
+      next();
     }
   });
 };

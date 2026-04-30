@@ -22,36 +22,62 @@ class BackendService {
 
   private startSession(uid: string) {
     this.currentUserUid = uid;
-    if (!this.presenceInterval) {
-      this.presenceInterval = setInterval(() => {
-        this.authFetch(`/api/presence/${uid}`, { method: 'POST' });
-        this.syncOnlinePlayers();
-      }, 3000);
-      this.syncOnlinePlayers();
-    }
-    if (!this.notificationsInterval) {
-      this.notificationsInterval = setInterval(() => this.syncNotifications(uid), 3000);
-    }
-    if (!this.messagesInterval) {
-      this.messagesInterval = setInterval(() => this.syncMessages(), 2000);
-    }
+    
+    const pollPresence = async () => {
+      if (this.currentUserUid !== uid) return;
+      try {
+        await this.authFetch(`/api/presence/${uid}`, { method: 'POST' });
+        await this.syncOnlinePlayers();
+      } catch (e) {}
+      this.presenceInterval = setTimeout(pollPresence, 3000);
+    };
+
+    const pollNotifications = async () => {
+      if (this.currentUserUid !== uid) return;
+      try {
+        await this.syncNotifications(uid);
+      } catch (e) {}
+      this.notificationsInterval = setTimeout(pollNotifications, 5000);
+    };
+
+    const pollMessages = async () => {
+      if (this.currentUserUid !== uid) return;
+      try {
+        await this.syncMessages();
+      } catch (e) {}
+      this.messagesInterval = setTimeout(pollMessages, 2000);
+    };
+
+    if (this.presenceInterval) clearTimeout(this.presenceInterval);
+    if (this.notificationsInterval) clearTimeout(this.notificationsInterval);
+    if (this.messagesInterval) clearTimeout(this.messagesInterval);
+
+    pollPresence();
+    pollNotifications();
+    pollMessages();
   }
 
   private stopSession() {
     this.currentUserUid = null;
-    if (this.presenceInterval) clearInterval(this.presenceInterval);
-    if (this.notificationsInterval) clearInterval(this.notificationsInterval);
-    if (this.messagesInterval) clearInterval(this.messagesInterval);
+    if (this.presenceInterval) clearTimeout(this.presenceInterval);
+    if (this.notificationsInterval) clearTimeout(this.notificationsInterval);
+    if (this.messagesInterval) clearTimeout(this.messagesInterval);
     this.presenceInterval = null;
     this.notificationsInterval = null;
     this.messagesInterval = null;
   }
 
   private setupPolling() {
-     // Events polling
-     if (!this.eventsInterval) {
-       this.eventsInterval = setInterval(() => this.syncEvents(), 15000);
-     }
+      const pollEvents = async () => {
+        try {
+          await this.syncEvents();
+        } catch (e) {}
+        this.eventsInterval = setTimeout(pollEvents, 30000);
+      };
+      
+      if (!this.eventsInterval) {
+        pollEvents();
+      }
   }
 
   private async syncEvents() {
@@ -67,9 +93,13 @@ class BackendService {
     const res = await fetch(url, { ...options, headers });
     
     if (res.status === 401) {
-      console.warn('Auth token invalid or expired. Logging out.');
-      this.logout();
-      window.location.href = '/';
+      // Avoid redirect if we are already on registration or if the token is already gone
+      const token = this.getToken();
+      if (token && window.location.pathname !== '/' && !window.location.pathname.includes('register')) {
+        console.warn('Auth token invalid or expired. Logging out.');
+        this.logout();
+        window.location.href = '/';
+      }
     }
     
     return res;
@@ -82,6 +112,13 @@ class BackendService {
        const players = Array.isArray(data) ? data : [];
        if (this.playersUpdateCallback) this.playersUpdateCallback(players);
      } catch (e) { /* ignore silent failure */ }
+  }
+
+  async getNotifications(uid: string) {
+    try {
+      const res = await this.authFetch(`/api/users/${uid}/notifications`);
+      return res.ok ? await res.json() : [];
+    } catch (e) { return []; }
   }
 
   private async syncNotifications(uid: string) {
@@ -190,7 +227,7 @@ class BackendService {
 
   async patchProfile(uid: string, updates: any) {
     try {
-      const res = await fetch(`/api/profile/${uid}`, {
+      const res = await this.authFetch(`/api/profile/${uid}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)

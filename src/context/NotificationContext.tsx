@@ -48,8 +48,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Check periodically for new notifications
     const fetchNotifications = async () => {
        try {
-         const res = await fetch(`/api/users/${profile.uid}/notifications`);
-         const data = await res.json();
+         const data = await backend.getNotifications(profile.uid);
          const newNotifs = Array.isArray(data) ? data : [];
          
          // Check for new unread notifications to show toast

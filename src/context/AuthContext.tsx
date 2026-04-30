@@ -290,13 +290,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (token && savedUser) {
         try {
-          const authUser = JSON.parse(savedUser);
           // Verify with backend
           const res = await fetch('/api/auth/me', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           
-          if (!res.ok) throw new Error('Session expired');
+          if (!res.ok) {
+            if (res.status === 401) {
+              throw new Error('Session expired');
+            }
+            // For 502, 503 etc, don't logout immediately, just stop loading and let it retry
+            setLoading(false);
+            return;
+          }
           
           const data = await res.json();
           setUser(data.user);
@@ -309,31 +315,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           });
 
-          let hadProfile = false;
           profileUnsubscribe = backend.onProfileUpdate(data.user.uid, data.user.email, (profileData) => {
-            // Detection of deletion: if we previously had a completed profile and now it's gone
-            if (hadProfile && !profileData) {
-              console.log("[AUTH] Profile deleted. Kicking user...");
-              logout();
-              return;
-            }
-            
             if (profileData) {
-              // Only consider it a "real" existing profile if it has basic data
-              if (profileData.firstName) hadProfile = true;
-              
-              setUser(data.user);
               setProfile(profileData);
               setLoading(false);
               
-              backend.joinGame({
-                uid: data.user.uid,
-                name: profileData.firstName ? `${profileData.firstName} ${profileData.lastName}` : 'Новий гравець',
-                status: 'online'
-              });
+              if (profileData.firstName) {
+                backend.joinGame({
+                  uid: data.user.uid,
+                  name: `${profileData.firstName} ${profileData.lastName}`,
+                  status: 'online'
+                });
+              }
             } else {
-               // First fetch returned null - player might still be creating character
-               setLoading(false);
+              // Only stop loading if we get a definitive "null" (no profile in DB)
+              setProfile(null);
+              setLoading(false);
             }
           });
 
@@ -343,7 +340,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         } catch (e) {
           console.warn("Auth init failed", e);
-          handleSetUser(null);
+          const errorMsg = e instanceof Error ? e.message : String(e);
+          if (errorMsg.includes('Session') || errorMsg.includes('auth')) {
+             handleSetUser(null);
+          }
           setLoading(false);
         }
       } else {

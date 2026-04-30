@@ -146,6 +146,7 @@ export const Registration: React.FC = () => {
       const result = await backend.saveProfile(profileData);
       if (result.success || result.uid) {
         await refreshProfile();
+        setLoading(false);
         // The App.tsx will notice profile is no longer null and show Dashboard
       } else {
         throw new Error(result.error || 'Невідома помилка сервера');

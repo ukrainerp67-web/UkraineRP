@@ -49,7 +49,7 @@ const AppContent: React.FC = () => {
     );
   }
 
-  if (!user || !profile) {
+  if (!user || !profile || !profile.firstName) {
     return <Registration />;
   }
 

@@ -299,7 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!res.ok) throw new Error('Session expired');
           
           const data = await res.json();
-          // DO NOT call setUser yet to avoid triggering App.tsx re-render with null profile
+          setUser(data.user);
           
           // Subscriptions
           globalUnsubscribe = backend.onGlobalStateUpdate((state) => {

@@ -13,7 +13,7 @@ export const Registration: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   useEffect(() => {
-    if (user && !profile) {
+    if (user && (!profile || !profile.firstName)) {
       setStep(2);
     } else if (!user) {
       setStep(1);

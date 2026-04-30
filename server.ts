@@ -46,21 +46,30 @@ let dbLastError = '';
 async function checkDatabase(retries = 20) {
   const url = process.env.DATABASE_URL;
   if (!url || url.trim() === '' || url === 'placeholder') {
-    dbLastError = 'DATABASE_URL is missing or empty';
+    dbLastError = 'DATABASE_URL is missing or empty. Please check Railway Variables.';
     console.error('❌ КРИТИЧНО: DATABASE_URL не знайдено!');
     return false;
   }
   
+  console.log(`[DB] Attempting to connect to ${url.split('@')[1] || 'database'}...`);
+
   for (let i = 0; i < retries; i++) {
     try {
       await prisma.$connect();
-      await prisma.$executeRaw`SELECT 1`;
+      // Перевірка чи існують таблиці (якщо ні - це помилка схеми)
+      await prisma.player.count().catch(async (e) => {
+         if (e.message.includes('does not exist')) {
+            console.log('[DB] Tables missing, schema sync might be needed.');
+            throw new Error('Таблиці не знайдено. Railway виконує синхронізацію...');
+         }
+         throw e;
+      });
       console.log('✅ Успішно підключено до PostgreSQL');
       dbLastError = '';
       return true;
     } catch (e: any) {
       dbLastError = e.message;
-      console.error(`❌ Спроба ${i+1}/${retries}: Помилка з'єднання:`, e.message);
+      console.error(`❌ Спроба ${i+1}/${retries}: Помилка:`, e.message);
       if (i < retries - 1) {
         await new Promise(r => setTimeout(r, 4000));
       }

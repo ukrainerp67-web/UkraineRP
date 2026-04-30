@@ -306,6 +306,12 @@ async function startServer() {
       const player = await prisma.player.findUnique({ where: { uid: decoded.uid } });
       
       if (!player) {
+         // Check if user exists by email as fallback
+         const playerByEmail = await prisma.player.findUnique({ where: { email: decoded.email } });
+         if (playerByEmail) {
+            return res.json({ user: { uid: playerByEmail.uid, email: playerByEmail.email } });
+         }
+
         return res.json({ 
           user: { uid: decoded.uid, email: decoded.email }, 
           isNewUser: true 

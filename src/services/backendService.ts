@@ -246,21 +246,26 @@ class BackendService {
   }
 
   onGlobalStateUpdate(callback: (state: any) => void) {
+    const update = async () => {
+      try {
+        const state = await this.getGlobalState();
+        callback(state);
+      } catch (e) {}
+    };
     if (this.globalInterval) clearInterval(this.globalInterval);
-    this.globalInterval = setInterval(async () => {
-      const state = await this.getGlobalState();
-      callback(state);
-    }, 3000);
-    this.getGlobalState().then(callback);
+    this.globalInterval = setInterval(update, 5000);
+    update();
     return () => clearInterval(this.globalInterval);
   }
 
   onProfileUpdate(uid: string, email: string | null, callback: (profile: any) => void) {
     const update = async () => {
-      const profile = await this.getProfile(uid, email || undefined);
-      callback(profile); // Call even if null so subscriber knows fetch finished
+      try {
+        const profile = await this.getProfile(uid, email || undefined);
+        callback(profile);
+      } catch (e) {}
     };
-    const interval = setInterval(update, 1000); // Super fast polling for real-time admin actions
+    const interval = setInterval(update, 2000);
     update();
     return () => clearInterval(interval);
   }

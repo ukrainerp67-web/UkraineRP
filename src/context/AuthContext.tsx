@@ -297,7 +297,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           if (!res.ok) {
             if (res.status === 401) {
-              throw new Error('Session expired');
+              handleSetUser(null);
+              setLoading(false);
+              return;
             }
             // For 502, 503 etc, don't logout immediately, just stop loading and let it retry
             setLoading(false);
@@ -340,10 +342,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         } catch (e) {
           console.warn("Auth init failed", e);
-          const errorMsg = e instanceof Error ? e.message : String(e);
-          if (errorMsg.includes('Session') || errorMsg.includes('auth')) {
-             handleSetUser(null);
-          }
           setLoading(false);
         }
       } else {

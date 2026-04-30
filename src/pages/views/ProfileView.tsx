@@ -266,9 +266,9 @@ export const ProfileView: React.FC = () => {
                  <div className="w-full">
                     <Passport 
                       uid={profile.uid}
-                      firstName={profile.firstName}
-                      lastName={profile.lastName}
-                      sex={profile.sex}
+                      firstName={profile.firstName || ''}
+                      lastName={profile.lastName || ''}
+                      sex={profile.sex || 'M'}
                       birthDate={
                         profile.createdAt?.toDate 
                           ? profile.createdAt.toDate().toLocaleDateString('uk-UA') 
@@ -276,9 +276,9 @@ export const ProfileView: React.FC = () => {
                             ? new Date(profile.createdAt.seconds * 1000).toLocaleDateString('uk-UA')
                             : profile.birthDate || new Date().toLocaleDateString('uk-UA')
                       }
-                      balance={profile.balance}
-                      signature={profile.signature}
-                      passportPhoto={profile.passportPhoto}
+                      balance={profile.balance || 0}
+                      signature={profile.signature || ''}
+                      passportPhoto={profile.passportPhoto || ''}
                       isVerified={profile.isVerified}
                       onPhotoClick={() => !isFrozen && setShowPhotoModal(true)}
                     />
@@ -662,11 +662,11 @@ export const ProfileView: React.FC = () => {
                     <>
                       <div className="absolute -top-12 left-6">
                         <div className="w-24 h-24 rounded-2xl border-4 border-card-dark bg-secondary-dark overflow-hidden shadow-xl">
-                          {friendData.passportPhoto ? (
+                          {friendData?.passportPhoto ? (
                             <img src={friendData.passportPhoto} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-4xl font-black text-text-dim">
-                              {friendData.firstName?.[0]}
+                              {friendData?.firstName?.[0] || '?'}
                             </div>
                           )}
                         </div>
@@ -675,41 +675,41 @@ export const ProfileView: React.FC = () => {
                       <div className="pt-14">
                         <div className="flex items-center gap-2">
                           <h3 className="text-xl font-black text-white uppercase tracking-wider">
-                            {friendData.firstName} {friendData.lastName}
+                            {friendData?.firstName || 'Гість'} {friendData?.lastName || ''}
                           </h3>
                           <Shield className="w-4 h-4 text-ukraine-blue" />
                         </div>
-                        <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-1">Громадянин | ID: {friendData.uid.slice(0, 8)}</p>
+                        <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-1">Громадянин | ID: {friendData?.uid?.slice(0, 8) || '---'}</p>
 
                         <div className="grid grid-cols-2 gap-3 mt-6">
                           <div className="bg-white/5 p-3 rounded-xl border border-white/5">
                             <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest mb-1">Баланс</p>
-                            <span className="text-sm font-black text-ukraine-yellow">₴{friendData.balance?.toLocaleString()}</span>
+                            <span className="text-sm font-black text-ukraine-yellow">₴{(friendData?.balance || 0).toLocaleString()}</span>
                           </div>
                           <div className="bg-white/5 p-3 rounded-xl border border-white/5">
                             <p className="text-[8px] font-bold text-text-dim uppercase tracking-widest mb-1">Рейтинг</p>
-                            <span className="text-sm font-black text-blue-400">{friendData.socialRating}</span>
+                            <span className="text-sm font-black text-blue-400">{friendData?.socialRating || 0}</span>
                           </div>
                         </div>
 
                         <div className="mt-6 space-y-4">
                           <div className="w-full h-full flex items-center justify-center">
                             <Passport 
-                              uid={friendData.uid}
-                              firstName={friendData.firstName}
-                              lastName={friendData.lastName}
-                              sex={friendData.sex}
+                              uid={friendData?.uid || ''}
+                              firstName={friendData?.firstName || ''}
+                              lastName={friendData?.lastName || ''}
+                              sex={friendData?.sex || 'M'}
                               birthDate={
-                                friendData.createdAt?.toDate 
+                                friendData?.createdAt?.toDate 
                                   ? friendData.createdAt.toDate().toLocaleDateString('uk-UA') 
-                                  : friendData.createdAt?.seconds 
+                                  : friendData?.createdAt?.seconds 
                                     ? new Date(friendData.createdAt.seconds * 1000).toLocaleDateString('uk-UA')
-                                    : friendData.birthDate || new Date().toLocaleDateString('uk-UA')
+                                    : friendData?.birthDate || new Date().toLocaleDateString('uk-UA')
                               }
-                              balance={friendData.balance}
-                              signature={friendData.signature}
-                              passportPhoto={friendData.passportPhoto}
-                              isVerified={friendData.isVerified}
+                              balance={friendData?.balance || 0}
+                              signature={friendData?.signature || ''}
+                              passportPhoto={friendData?.passportPhoto || ''}
+                              isVerified={friendData?.isVerified}
                             />
                           </div>
                           

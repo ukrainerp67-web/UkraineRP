@@ -13,7 +13,9 @@ export const Registration: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   useEffect(() => {
-    if (user && (!profile || !profile.firstName)) {
+    if (user && profile && profile.firstName) {
+      // Profile loaded and has data - App.tsx will handle the routing
+    } else if (user && (!profile || !profile.firstName)) {
       setStep(2);
     } else if (!user) {
       setStep(1);
@@ -137,10 +139,11 @@ export const Registration: React.FC = () => {
         signature: formData.signature,
         birthDate: new Date().toLocaleDateString('uk-UA'),
         balance: 5000,
-        socialRating: 0,
+        socialRating: 50,
         businesses: [],
         status: 'Громадянин',
-        role: 'user'
+        role: 'user',
+        isVerified: false
       };
       
       const result = await backend.saveProfile(profileData);

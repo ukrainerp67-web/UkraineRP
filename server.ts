@@ -280,8 +280,14 @@ async function startServer() {
     }
   });
 
-  app.get('/api/admin/users', async (req, res) => {
+  app.get('/api/admin/users', authenticateToken, async (req: any, res) => {
     try {
+      // Ensure only admins can see all users
+      const requester = await prisma.player.findUnique({ where: { uid: req.user.uid } });
+      if (requester?.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
       if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is missing');
       const users = await prisma.player.findMany();
       res.json(users || []);

@@ -30,7 +30,12 @@ export const AdminView: React.FC = () => {
     
     const update = async () => {
       try {
-        const res = await fetch('/api/admin/users');
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/admin/users', {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : ''
+          }
+        });
         if (res.ok) {
           const data = await res.json();
           setUsers(data);
@@ -51,6 +56,9 @@ export const AdminView: React.FC = () => {
             onlineNow,
             avgSocialRating: data.length > 0 ? data.reduce((acc: number, u: any) => acc + (Number(u.socialRating) || 0), 0) / data.length : 0
           });
+        } else {
+           const errText = await res.text();
+           console.warn('Admin users fetch not ok:', res.status, errText);
         }
       } catch (e) {
         console.error('Fetch admin users error:', e);
@@ -67,7 +75,12 @@ export const AdminView: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/admin/users');
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/users', {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setUsers(data);

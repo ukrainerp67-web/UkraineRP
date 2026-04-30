@@ -501,7 +501,7 @@ class BackendService {
   onAdminUsersUpdate(callback: (users: any[]) => void) {
     const update = async () => {
       try {
-        const res = await fetch('/api/admin/users');
+        const res = await this.authFetch('/api/admin/users');
         if (res.ok) {
           const data = await res.json();
           callback(Array.isArray(data) ? data : []);

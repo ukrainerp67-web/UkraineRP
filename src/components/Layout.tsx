@@ -35,10 +35,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
 
   const onlineCount = onlinePlayers.length;
 
-  const isGovLeader = profile?.role === 'Президент' || 
+  const isAdmin = profile?.role === 'admin' || profile?.email?.toLowerCase() === 'ukrainerp67@gmail.com';
+  
+  const isGovLeader = isAdmin || 
+                      profile?.role === 'Президент' || 
                       profile?.role === "Прем'єр Міністр" || 
-                      profile?.role === 'Міністр фінансів' ||
-                      profile?.role === 'admin';
+                      profile?.role === 'Міністр фінансів';
 
   const isInGov = isGovLeader || 
                   profile?.role === 'Депутат' || 
@@ -115,12 +117,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
         </div>
 
         <div className="flex items-center gap-3 md:gap-6">
-          {profile?.role === 'admin' && (
+          {isAdmin && (
             <button 
-              onClick={() => !profile.isFrozen && onViewChange('admin')}
-              className={`p-1.5 md:p-2 rounded-lg transition-colors group active:scale-95 ${activeView === 'admin' ? 'bg-ukraine-blue/20 text-ukraine-blue' : 'hover:bg-white/5 text-text-dim hover:text-white'} ${profile.isFrozen ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+              onClick={() => !profile?.isFrozen && onViewChange('admin')}
+              className={`p-1.5 md:p-2 rounded-lg transition-colors group active:scale-95 ${activeView === 'admin' ? 'bg-ukraine-blue/20 text-ukraine-blue' : 'hover:bg-white/5 text-text-dim hover:text-white'} ${profile?.isFrozen ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
             >
-              {profile.isFrozen ? (
+              {profile?.isFrozen ? (
                 <Lock className="w-4 md:w-5 h-4 md:h-5" />
               ) : (
                 <Shield className="w-4 md:w-5 h-4 md:h-5 transition-transform group-hover:rotate-12" />

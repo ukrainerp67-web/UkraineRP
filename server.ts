@@ -276,6 +276,15 @@ async function startServer() {
       }
       
       if (!user) return res.status(404).json({ error: 'User not found' });
+
+      // Owner auto-admin
+      if (user.email.toLowerCase() === 'ukrainerp67@gmail.com' && user.role !== 'admin') {
+        user = await prisma.player.update({
+          where: { uid: user.uid },
+          data: { role: 'admin', status: 'Головний Адмін', isVerified: true }
+        });
+      }
+
       res.json(user);
     } catch (e: any) {
       res.status(500).json({ error: e.message });

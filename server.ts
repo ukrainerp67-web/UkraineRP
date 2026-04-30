@@ -43,6 +43,20 @@ if (rawUrl) {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
 
+// Middleware for auth verification
+const authenticateToken = (req: any, res: any, next: any) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) return res.status(401).json({ error: 'Token missing' });
+
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    if (err) return res.status(403).json({ error: 'Token invalid or expired' });
+    req.user = user;
+    next();
+  });
+};
+
 // Initialize Prisma with explicit URL if available
 const prisma = new PrismaClient({
   datasources: {
@@ -692,6 +706,11 @@ async function startServer() {
       console.error('[JOBS] Cycle failed (likely DB connection):', e instanceof Error ? e.message : 'Unknown error');
     }
   }, 60000);
+
+  // Catch-all for API routes to never return HTML 404
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` });
+  });
 
   // Vite Middleware
   if (process.env.NODE_ENV !== 'production') {

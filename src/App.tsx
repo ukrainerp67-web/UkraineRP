@@ -4,7 +4,30 @@ import { useAuth, AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Registration } from './pages/Registration';
 import { Dashboard } from './pages/Dashboard';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
+import { ErrorBoundary } from 'react-error-boundary';
+
+function ErrorFallback({ error, resetErrorBoundary }: any) {
+  return (
+    <div className="h-[100dvh] bg-[#0A0A0C] flex flex-col items-center justify-center p-6 text-center">
+      <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+        <AlertTriangle className="w-8 h-8 text-red-500" />
+      </div>
+      <h2 className="text-xl font-black text-white uppercase tracking-wider mb-2">Стався збій</h2>
+      <p className="text-text-muted text-[10px] uppercase tracking-widest max-w-md mb-8">
+        Виникла помилка в ігровому інтерфейсі.
+        <br />
+        <span className="opacity-50 mt-2 block">{error.message}</span>
+      </p>
+      <button 
+        onClick={resetErrorBoundary}
+        className="px-8 py-4 bg-white text-black rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-opacity-90 transition-all active:scale-95"
+      >
+        Спробувати знову
+      </button>
+    </div>
+  );
+}
 
 const AppContent: React.FC = () => {
   const { user, profile, loading, isRecovering } = useAuth();
@@ -51,6 +74,7 @@ const AppContent: React.FC = () => {
   }
 
   if (loading && showBypass) {
+    console.log('App: Stuck in loading, showing bypass. User:', !!user, 'Profile:', !!profile);
     return (
       <div className="h-[100dvh] bg-[#0A0A0C] flex flex-col items-center justify-center gap-6 p-6 text-center">
         <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center">
@@ -71,20 +95,34 @@ const AppContent: React.FC = () => {
   }
 
   if (!user || !profile || !profile.firstName) {
-    return <Registration />;
+    if (user && !loading && (!profile || !profile.firstName)) {
+       console.log('App: User exists but profile/firstName missing, showing Registration');
+    }
+    return (
+      <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
+        <Registration />
+      </ErrorBoundary>
+    );
   }
 
-  return <Dashboard />;
+  console.log('App: Rendering Dashboard');
+  return (
+    <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
+      <Dashboard />
+    </ErrorBoundary>
+  );
 };
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <NotificationProvider>
-          <AppContent />
-        </NotificationProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
+      <BrowserRouter>
+        <AuthProvider>
+          <NotificationProvider>
+            <AppContent />
+          </NotificationProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

@@ -16,6 +16,27 @@ import { AdminView } from './views/AdminView';
 import { Snowflake, Lock, Bell, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PayDaySystem } from '../components/PayDaySystem';
+import { ErrorBoundary } from 'react-error-boundary';
+
+function ViewErrorFallback({ error, resetErrorBoundary }: any) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-card-dark rounded-3xl border border-red-500/20 text-center">
+      <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+      <h3 className="text-lg font-black text-white uppercase tracking-widest mb-2">Збій модуля</h3>
+      <p className="text-text-muted text-[10px] uppercase tracking-widest mb-6 max-w-xs mx-auto">
+        Виникла помилка при відображенні цього розділу.
+        <br />
+        <span className="opacity-40">{error.message}</span>
+      </p>
+      <button 
+        onClick={resetErrorBoundary}
+        className="px-6 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-black uppercase tracking-[0.2em] text-[10px] transition-all"
+      >
+        ПЕРЕЗАВАНТАЖИТИ МОДУЛЬ
+      </button>
+    </div>
+  );
+}
 
 export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('profile');
@@ -150,7 +171,19 @@ export const Dashboard: React.FC = () => {
         )}
 
         <div className={`flex-1 min-w-0 ${profile?.isFrozen && activeTab !== 'notifications' ? 'pointer-events-none filter blur-[1px]' : ''}`}>
-          {renderView()}
+          <ErrorBoundary 
+            key={activeTab} 
+            FallbackComponent={ViewErrorFallback} 
+            onReset={() => {
+              if (activeTab === 'profile') {
+                window.location.reload();
+              } else {
+                setActiveTab('profile');
+              }
+            }}
+          >
+            {renderView()}
+          </ErrorBoundary>
         </div>
 
         <AnimatePresence>

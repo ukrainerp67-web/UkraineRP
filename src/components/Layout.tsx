@@ -151,11 +151,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
             )}
             <div className="flex items-center gap-1.5 md:gap-2">
               <Wallet className="w-3 md:w-3.5 h-3 md:h-3.5 text-ukraine-yellow" />
-              <span className="text-xs md:text-sm font-black text-ukraine-yellow">₴{profile?.balance.toLocaleString()}</span>
+              <span className="text-xs md:text-sm font-black text-ukraine-yellow">₴{(profile?.balance ?? 0).toLocaleString()}</span>
             </div>
             <div className="flex items-center gap-1">
               <Star className="w-2 md:w-2.5 h-2 md:h-2.5 text-blue-400 fill-current" />
-              <span className="text-[8px] md:text-[9px] font-bold text-text-muted uppercase tracking-tighter">Рейтинг: {profile?.socialRating}</span>
+              <span className="text-[8px] md:text-[9px] font-bold text-text-muted uppercase tracking-tighter">Рейтинг: {profile?.socialRating ?? 0}</span>
             </div>
           </div>
           

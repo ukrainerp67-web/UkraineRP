@@ -1,5 +1,5 @@
 import prisma from './prisma';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 /**
  * 1. Система реєстрації

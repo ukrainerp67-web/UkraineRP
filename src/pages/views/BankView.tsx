@@ -88,7 +88,7 @@ export const BankView: React.FC = () => {
     setIsProcessing(true);
     try {
       const cardNumber = Array.from({length: 4}, () => Math.floor(Math.random() * 9000 + 1000)).join(' ');
-      const currentCards = profile.bankCards || [];
+      const currentCards = Array.isArray(profile.bankCards) ? profile.bankCards : [];
       const newCard = {
         type: selectedCardType.id,
         number: cardNumber,
@@ -98,15 +98,19 @@ export const BankView: React.FC = () => {
         balance: 0
       };
 
-      await backend.saveProfile({
+      const result = await backend.saveProfile({
         ...profile,
         bankCards: [...currentCards, newCard]
       });
       
-      await refreshProfile();
-      await sendNotification(profile.uid, 'Банківська карта', `Вашу карту "${selectedCardType.name}" активовано!`, 'success');
-      setShowCardCreator(false);
-      resetCreator();
+      if (result.success) {
+        await refreshProfile();
+        await sendNotification(profile.uid, 'Банківська карта', `Вашу карту "${selectedCardType.name}" активовано!`, 'success');
+        setShowCardCreator(false);
+        resetCreator();
+      } else {
+        alert("Помилка при збереженні карти: " + (result.error || "Невідома помилка"));
+      }
     } catch (error) {
       console.error('Card creation error:', error);
       alert('Сталася помилка при створенні карти.');
@@ -166,7 +170,10 @@ export const BankView: React.FC = () => {
   ];
 
   const renderCard = (card: any) => {
+    if (!card) return null;
     const cardData = CARD_TYPES.find(t => t.id === card.type);
+    const balance = typeof card.balance === 'number' ? card.balance : 0;
+    
     return (
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
@@ -180,26 +187,26 @@ export const BankView: React.FC = () => {
           <div className="flex justify-between items-start">
             <div>
               <p className="text-[7px] md:text-[8px] font-black uppercase tracking-widest opacity-80">Національний Банк</p>
-              <p className="text-[10px] md:text-xs font-bold leading-tight">{card.label}</p>
+              <p className="text-[10px] md:text-xs font-bold leading-tight truncate max-w-[150px]">{card.label || 'Банківська карта'}</p>
             </div>
-            <span className="text-xl md:text-2xl">{cardData?.icon}</span>
+            <span className="text-xl md:text-2xl">{cardData?.icon || '💳'}</span>
           </div>
           
           <div className="mt-auto mb-2">
-            <p className="text-xs md:text-sm font-mono tracking-widest mb-1 md:mb-2">{card.number}</p>
+            <p className="text-xs md:text-sm font-mono tracking-widest mb-1 md:mb-2">{card.number || '**** **** **** ****'}</p>
           </div>
 
           <div className="flex justify-between items-end gap-2 pb-2">
             <div className="flex-1 min-w-0">
               <p className="text-[10px] md:text-xs font-bold uppercase opacity-80 mb-1">Власник</p>
-              <p className="text-[14px] md:text-base font-black uppercase tracking-tight">
-                {profile?.firstName} {profile?.lastName}
+              <p className="text-[14px] md:text-base font-black uppercase tracking-tight truncate">
+                {profile?.firstName || ''} {profile?.lastName || ''}
               </p>
             </div>
             <div className="text-right shrink-0">
               <p className="text-[10px] md:text-xs font-bold uppercase opacity-80 mb-1">Баланс</p>
               <p className="text-[16px] md:text-xl font-black text-white whitespace-nowrap">
-                ₴{card.balance?.toLocaleString() || 0}
+                ₴{balance.toLocaleString()}
               </p>
             </div>
           </div>
@@ -230,13 +237,16 @@ export const BankView: React.FC = () => {
         <section className="space-y-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Ваші активи</h3>
           <div className="flex flex-col items-center">
-            {profile?.bankCards && profile.bankCards.length > 0 ? (
+            {profile?.bankCards && Array.isArray(profile.bankCards) && profile.bankCards.length > 0 ? (
               <div className="w-full flex overflow-x-auto gap-4 py-4 px-2 snap-x custom-scrollbar">
-                {profile.bankCards.map((card: any, idx: number) => (
-                  <div key={idx} className="snap-center shrink-0">
-                    {renderCard(card)}
-                  </div>
-                ))}
+                {profile.bankCards.map((card: any, idx: number) => {
+                  if (!card) return null;
+                  return (
+                    <div key={card.number || idx} className="snap-center shrink-0">
+                      {renderCard(card)}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="w-full aspect-[1.58/1] rounded-2xl border-2 border-dashed border-white/5 flex flex-col items-center justify-center bg-white/2 space-y-2 opacity-50 grayscale">

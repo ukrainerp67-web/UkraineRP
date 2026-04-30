@@ -41,6 +41,7 @@ export const Passport: React.FC<PassportProps> = ({
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!passportId || passportId === 'UA-PENDING') return;
     navigator.clipboard.writeText(passportId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -133,20 +134,20 @@ export const Passport: React.FC<PassportProps> = ({
             <div className="flex-1 flex flex-col justify-between min-w-0 py-0">
               {/* Fields Grid */}
               <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 md:gap-y-4 flex-1">
-                <DataField label="ПРІЗВИЩЕ" value={lastName.toUpperCase()} />
+                <DataField label="ПРІЗВИЩЕ" value={(lastName || '').toUpperCase()} />
                 <DataField 
                   label="ІМ'Я" 
-                  value={firstName.toUpperCase()} 
+                  value={(firstName || '').toUpperCase()} 
                   addon={isVerified ? <CheckCircle2 className="w-2.5 md:w-4 h-2.5 md:h-4 text-ukraine-blue" /> : undefined}
                 />
-                <DataField label="ДАТА РЕЄСТРАЦІЇ" value={birthDate} />
+                <DataField label="ДАТА РЕЄСТРАЦІЇ" value={birthDate || '--.--.----'} />
                 <DataField 
                   label="ID ДОКУМЕНТА" 
                   value={passportId} 
                   onCopy={handleCopy}
                   isCopied={copied}
                 />
-                <DataField label="СТАТЬ" value={sex === 'M' ? 'ЧОЛ' : 'ЖІН'} />
+                <DataField label="СТАТЬ" value={sex === 'M' ? 'ЧОЛ' : sex === 'F' ? 'ЖІН' : '---'} />
                 <DataField label="ГРОМАДЯНСТВО" value="УКРАЇНА" isHighlight />
               </div>
               

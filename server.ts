@@ -19,8 +19,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
 
 const prisma = new PrismaClient();
 
-// Перевірка підключення до бази даних з ретраями
-async function checkDatabase(retries = 10) {
+// Перевірка підключення до бази даних з ретраями (збільшено до 15 спроб)
+async function checkDatabase(retries = 15) {
   const url = process.env.DATABASE_URL;
   if (!url || url.trim() === '') {
     console.error('❌ КРИТИЧНО: DATABASE_URL не знайдено!');
@@ -29,12 +29,17 @@ async function checkDatabase(retries = 10) {
   
   for (let i = 0; i < retries; i++) {
     try {
+      // Спроба виконати будь-який запит для перевірки реального з'єднання
+      await prisma.$connect();
       await prisma.$executeRaw`SELECT 1`;
-      console.log('✅ Успішно підключено до PostgreSQL');
+      console.log('✅ Успішно підключено до Railway PostgreSQL');
       return true;
     } catch (e: any) {
-      console.error(`❌ Спроба ${i+1}/${retries}: Помилка підключення до БД (DATABASE_URL=${url.substring(0, 20)}...):`, e.message);
-      if (i < retries - 1) await new Promise(r => setTimeout(r, 3000));
+      console.error(`❌ Спроба ${i+1}/${retries}: Помилка з'єднання (Railway ${url.substring(0, 15)}...):`, e.message);
+      if (i < retries - 1) {
+        // Очікуємо 3-4 секунди між спробами, поки Railway завантажує контейнер БД
+        await new Promise(r => setTimeout(r, 4000));
+      }
     }
   }
   return false;

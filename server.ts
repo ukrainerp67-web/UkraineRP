@@ -9,10 +9,24 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 // Railway/AI Studio Alias fix: 
-const rawUrl = process.env.DATABASE_URL || process.env['URL-адреса_БАЗИ_ДАНИХ'] || process.env['ПУБЛІЧНА_URL-АДРЕСА_БАЗИ_ДАНИХ'];
-if (rawUrl && (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '' || process.env.DATABASE_URL === 'placeholder')) {
+const findDatabaseUrl = () => {
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL !== 'placeholder' && process.env.DATABASE_URL.trim() !== '') {
+    return process.env.DATABASE_URL;
+  }
+  // Шукаємо в усіх змінних щось схоже на postgres url
+  for (const key in process.env) {
+    const val = process.env[key];
+    if (val && typeof val === 'string' && val.startsWith('postgresql://')) {
+      console.log(`[CONFIG] Found database URL in variable: ${key}`);
+      return val;
+    }
+  }
+  return null;
+};
+
+const rawUrl = findDatabaseUrl();
+if (rawUrl) {
   process.env.DATABASE_URL = rawUrl;
-  console.log('[CONFIG] DATABASE_URL set from alias');
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
@@ -64,12 +78,13 @@ async function startServer() {
 
   app.get('/api/health', (req, res) => {
     res.json({ 
-      status: isDbReady ? 'ok' : 'db_error', 
+      status: isDbReady ? 'ok' : (dbLastError ? 'db_error' : 'connecting'), 
       db: isDbReady,
       error: dbLastError,
       env: {
         has_url: !!process.env.DATABASE_URL,
-        url_prefix: process.env.DATABASE_URL ? process.env.DATABASE_URL.split(':')[0] : 'none'
+        url_prefix: process.env.DATABASE_URL ? process.env.DATABASE_URL.split(':')[0] : 'none',
+        keys: Object.keys(process.env).filter(k => k.includes('URL') || k.includes('DATABASE'))
       }
     });
   });

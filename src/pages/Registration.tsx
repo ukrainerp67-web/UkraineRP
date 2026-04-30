@@ -42,15 +42,16 @@ export const Registration: React.FC = () => {
         const data = await res.json();
         setDbStatus({ 
           ok: data.status === 'ok', 
+          connecting: data.status === 'connecting',
           checking: false, 
           message: data.error || data.message 
         });
       } catch (e: any) {
-        setDbStatus({ ok: false, checking: false, message: e.message });
+        setDbStatus({ ok: false, checking: false, message: 'Сервер недоступний (' + e.message + ')' });
       }
     };
     checkStatus();
-    const interval = setInterval(checkStatus, 30000);
+    const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -166,36 +167,46 @@ export const Registration: React.FC = () => {
   return (
     <div className="h-[100dvh] bg-[#0A0A0C] flex flex-col items-center justify-start overflow-y-auto p-4 md:justify-center text-[#E0E0E0]">
       {/* Database Error Overlay */}
-      {!dbStatus.ok && !dbStatus.checking && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6">
+      {(!dbStatus.ok || dbStatus.connecting) && !dbStatus.checking && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6 text-center">
           <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm bg-card-dark border border-red-500/30 p-8 rounded-3xl text-center shadow-[0_0_50px_rgba(239,68,68,0.1)]"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-md bg-[#111114] border border-white/5 p-10 rounded-[2.5rem] shadow-[0_0_80px_rgba(0,0,0,0.5)]"
           >
-            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-               <X className="w-10 h-10 text-red-500" />
-            </div>
-            <h2 className="text-xl font-black text-white uppercase tracking-widest mb-4">База даних недоступна</h2>
-            <div className="space-y-4">
-                <p className="text-[10px] text-text-muted uppercase tracking-widest leading-loose">
-                    {dbStatus.message || 'Сервер гри не може підключитися до бази даних PostgreSQL на Railway.'}
+            {dbStatus.connecting ? (
+              <div className="flex flex-col items-center">
+                <div className="w-20 h-20 border-4 border-ukraine-blue/20 border-t-ukraine-blue rounded-full animate-spin mb-8" />
+                <h2 className="text-xl font-black text-white uppercase tracking-widest mb-4">ПІДКЛЮЧЕННЯ ДО БАЗИ...</h2>
+                <p className="text-[10px] text-text-dim uppercase tracking-widest leading-loose max-w-sm">
+                    Це може зайняти до 60 секунд під час першого запуску Railway PostgreSQL.
                 </p>
-                <div className="bg-black/40 p-4 rounded-xl border border-white/5 text-left">
-                    <p className="text-[9px] font-black text-ukraine-yellow uppercase mb-2">Що робити:</p>
-                    <ul className="text-[9px] text-text-dim space-y-2 list-disc pl-4 uppercase tracking-tighter">
-                        <li>Перевірте вкладку Settings в Railway</li>
-                        <li>Переконайтеся, що змінна <span className="text-white">DATABASE_URL</span> прописана вірно</li>
-                        <li>Перезапустіть сервіс на Railway</li>
-                    </ul>
+              </div>
+            ) : (
+              <>
+                <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-8 shadow-[0_0_40px_rgba(239,68,68,0.1)]">
+                   <X className="w-12 h-12 text-red-500" />
                 </div>
-                <button 
-                    onClick={() => window.location.reload()}
-                    className="w-full py-4 bg-white text-black font-black uppercase tracking-widest rounded-xl hover:bg-gray-200 transition-all"
-                >
-                    ПЕРЕПЕРЕВІРИТИ
-                </button>
-            </div>
+                <h2 className="text-2xl font-black text-white uppercase tracking-[0.2em] mb-4">ПОМИЛКА З'ЄДНАННЯ</h2>
+                
+                <div className="bg-black/60 p-6 rounded-2xl border border-white/5 text-left mb-8 max-h-[200px] overflow-y-auto">
+                    <p className="text-[9px] font-black text-ukraine-yellow uppercase mb-2">Технічна інформація:</p>
+                    <p className="text-[10px] text-red-400/80 font-mono break-all leading-relaxed whitespace-pre-wrap">
+                        {dbStatus.message || 'Невідома помилка підключення'}
+                    </p>
+                </div>
+
+                <div className="space-y-4">
+                  <button 
+                      onClick={() => window.location.reload()}
+                      className="w-full py-5 bg-white text-black font-black uppercase tracking-widest rounded-3xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
+                  >
+                      ПОВТОРИТИ СПРОБУ
+                  </button>
+                  <p className="text-[9px] text-text-muted uppercase tracking-[0.3em]">Ukraine RP v0.9.5 Production</p>
+                </div>
+              </>
+            )}
           </motion.div>
         </div>
       )}

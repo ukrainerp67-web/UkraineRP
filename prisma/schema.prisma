@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  balance      Float    @default(0.0)
+  level        Int      @default(1)
+  xp           Int      @default(0)
+  inventory    InventoryItem[]
+  achievements PlayerAchievement[]
+  createdAt    DateTime @default(now())
+  lastLogin    DateTime @updatedAt
+}
+
+model Item {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  type        String   // Наприклад: "WEAPON", "POTION", "ARTIFACT"
+  rarity      String   @default("COMMON")
+  inventoryEntries InventoryItem[]
+}
+
+model InventoryItem {
+  id        String   @id @default(uuid())
+  player    Player   @relation(fields: [playerId], references: [id])
+  playerId  String
+  item      Item     @relation(fields: [itemId], references: [id])
+  itemId    String
+  quantity  Int      @default(1)
+
+  @@unique([playerId, itemId])
+}
+
+model Achievement {
+  id          String   @id @default(uuid())
+  title       String   @unique
+  description String
+  points      Int      @default(10)
+  playerLinks PlayerAchievement[]
+}
+
+model PlayerAchievement {
+  id            String      @id @default(uuid())
+  player        Player      @relation(fields: [playerId], references: [id])
+  playerId      String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  achievementId String
+  progress      Int         @default(0)
+  isCompleted   Boolean     @default(false)
+  completedAt   DateTime?
+
+  @@unique([playerId, achievementId])
+}

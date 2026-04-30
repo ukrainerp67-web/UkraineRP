@@ -373,6 +373,7 @@ async function startServer() {
           socialRating: socialRating !== undefined ? socialRating : undefined,
           bankCards: bankCards || undefined,
           properties: properties || undefined,
+          businesses: businesses || undefined,
           inventory: inventory || undefined,
           isVerified: isAdmin || isVerified,
           updatedAt: new Date(),
@@ -394,6 +395,7 @@ async function startServer() {
           socialRating: socialRating || 50,
           bankCards: bankCards || [],
           properties: properties || [],
+          businesses: businesses || [],
           inventory: inventory || [],
           isVerified: isAdmin || isVerified
         }
@@ -653,11 +655,11 @@ async function startServer() {
 
   app.delete('/api/profile/:uid', authenticateToken, async (req: any, res) => {
     const uid = req.params.uid;
+    console.log(`[ADMIN-DELETE] Requested deletion of ${uid} by ${req.user.uid}`);
     try {
-      // Check if requester is the owner
       const requester = await prisma.player.findUnique({ where: { uid: req.user.uid } });
-      if (requester?.email !== 'ukrainerp67@gmail.com') {
-        return res.status(403).json({ success: false, error: 'Тільки головний розробник може видаляти акаунти' });
+      if (!requester || (requester.role !== 'admin' && requester.email !== 'ukrainerp67@gmail.com')) {
+        return res.status(403).json({ success: false, error: 'Тільки адміністратори можуть видаляти акаунти' });
       }
 
       const targetPlayer = await prisma.player.findUnique({ where: { uid } });
@@ -665,21 +667,17 @@ async function startServer() {
         return res.status(404).json({ success: false, error: 'Гравець не знайдений' });
       }
 
-      const playerId = targetPlayer.id;
-
       await prisma.$transaction([
-        prisma.playerAchievement.deleteMany({ where: { playerId } }),
-        prisma.inventoryItem.deleteMany({ where: { playerId } }),
         prisma.notification.deleteMany({ where: { userId: uid } }),
         prisma.fine.deleteMany({ where: { userId: uid } }),
         prisma.presence.deleteMany({ where: { uid } }),
         prisma.player.delete({ where: { uid } })
       ]);
       
-      console.log(`[ADMIN] Account deleted: ${uid} (Email: ${targetPlayer.email})`);
+      console.log(`[ADMIN-DELETE] Success! Account ${uid} (Email: ${targetPlayer.email}) fully removed.`);
       res.json({ success: true });
     } catch (e: any) {
-      console.error('[ADMIN] Delete error:', e.message);
+      console.error('[ADMIN-DELETE] CRITICAL ERROR:', e);
       res.status(500).json({ success: false, error: e.message });
     }
   });

@@ -98,7 +98,7 @@ model Item {
 
 model InventoryItem {
   id        String   @id @default(uuid())
-  player    Player   @relation(fields: [playerId], references: [id])
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   playerId  String
   item      Item     @relation(fields: [itemId], references: [id])
   itemId    String
@@ -117,7 +117,7 @@ model Achievement {
 
 model PlayerAchievement {
   id            String      @id @default(uuid())
-  player        Player      @relation(fields: [playerId], references: [id])
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
   playerId      String
   achievement   Achievement @relation(fields: [achievementId], references: [id])
   achievementId String

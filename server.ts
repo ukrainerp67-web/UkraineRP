@@ -10,14 +10,26 @@ import jwt from 'jsonwebtoken';
 
 // Railway/AI Studio Alias fix: 
 const findDatabaseUrl = () => {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL !== 'placeholder' && process.env.DATABASE_URL.trim() !== '') {
+  // Пріоритет 1: Перевіряємо чи є вже DATABASE_URL і чи він не внутрішній
+  if (process.env.DATABASE_URL && 
+      process.env.DATABASE_URL !== 'placeholder' && 
+      process.env.DATABASE_URL.trim() !== '' &&
+      !process.env.DATABASE_URL.includes('railway.internal')) {
     return process.env.DATABASE_URL;
   }
-  // Шукаємо в усіх змінних щось схоже на postgres url
+
+  // Пріоритет 2: Шукаємо явний PUBLIC_URL
+  for (const key in process.env) {
+    if (key.includes('PUBLIC') && key.includes('URL') && process.env[key]?.startsWith('postgresql://')) {
+      console.log(`[CONFIG] Found PUBLIC database URL in variable: ${key}`);
+      return process.env[key];
+    }
+  }
+
+  // Пріоритет 3: Будь-який postgres url (навіть внутрішній як останній шанс)
   for (const key in process.env) {
     const val = process.env[key];
     if (val && typeof val === 'string' && val.startsWith('postgresql://')) {
-      console.log(`[CONFIG] Found database URL in variable: ${key}`);
       return val;
     }
   }

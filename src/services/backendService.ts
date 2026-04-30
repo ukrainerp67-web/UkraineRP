@@ -1,11 +1,3 @@
-import { auth } from '../firebase';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut,
-  onAuthStateChanged
-} from 'firebase/auth';
-
 class BackendService {
   private playersUpdateCallback: ((players: any[]) => void) | null = null;
   private messageCallback: ((msg: any) => void) | null = null;
@@ -15,49 +7,64 @@ class BackendService {
   private notificationsInterval: any = null;
   private messagesInterval: any = null;
   private lastProcessedMessageId: number = 0;
+  private currentUserUid: string | null = null;
 
   constructor() {
-    this.setupPresence();
+    const saved = localStorage.getItem("user");
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        this.startSession(u.uid);
+      } catch (e) {}
+    }
     this.setupPolling();
   }
 
-  private setupPresence() {
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        if (!this.presenceInterval) {
-          this.presenceInterval = setInterval(() => {
-            fetch(`/api/presence/${user.uid}`, { method: 'POST' });
-            this.syncOnlinePlayers();
-          }, 3000);
-          this.syncOnlinePlayers();
-        }
-      } else {
-        if (this.presenceInterval) {
-          clearInterval(this.presenceInterval);
-          this.presenceInterval = null;
-        }
-      }
-    });
+  private startSession(uid: string) {
+    this.currentUserUid = uid;
+    if (!this.presenceInterval) {
+      this.presenceInterval = setInterval(() => {
+        fetch(`/api/presence/${uid}`, { method: 'POST' });
+        this.syncOnlinePlayers();
+      }, 3000);
+      this.syncOnlinePlayers();
+    }
+    if (!this.notificationsInterval) {
+      this.notificationsInterval = setInterval(() => this.syncNotifications(uid), 10000);
+    }
+    if (!this.messagesInterval) {
+      this.messagesInterval = setInterval(() => this.syncMessages(), 4000);
+    }
+  }
+
+  private stopSession() {
+    this.currentUserUid = null;
+    if (this.presenceInterval) clearInterval(this.presenceInterval);
+    if (this.notificationsInterval) clearInterval(this.notificationsInterval);
+    if (this.messagesInterval) clearInterval(this.messagesInterval);
+    this.presenceInterval = null;
+    this.notificationsInterval = null;
+    this.messagesInterval = null;
   }
 
   private setupPolling() {
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        // Notifications Polling
-        if (!this.notificationsInterval) {
-          this.notificationsInterval = setInterval(() => this.syncNotifications(user.uid), 10000);
-        }
-        // Messages Polling
-        if (!this.messagesInterval) {
-          this.messagesInterval = setInterval(() => this.syncMessages(), 4000);
-        }
-      } else {
-        clearInterval(this.notificationsInterval);
-        clearInterval(this.messagesInterval);
-        this.notificationsInterval = null;
-        this.messagesInterval = null;
-      }
-    });
+     // Events polling
+     if (!this.eventsInterval) {
+       this.eventsInterval = setInterval(() => this.syncEvents(), 15000);
+     }
+  }
+
+  private async syncEvents() {
+    // This will be called by components if they subscribe
+  }
+
+  private async authFetch(url: string, options: RequestInit = {}) {
+    const token = this.getToken();
+    const headers = new Headers(options.headers || {});
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    return fetch(url, { ...options, headers });
   }
 
   private async syncOnlinePlayers() {
@@ -96,32 +103,45 @@ class BackendService {
   // Auth
   getToken() { return localStorage.getItem("token"); }
 
-  async logout() {
-    try {
-      await signOut(auth);
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-      return { success: true };
-    } catch (error: any) { return { error: error.message }; }
+  logout() {
+    this.stopSession();
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    return { success: true };
   }
 
   async login(credentials: any) {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, credentials.email, credentials.password);
-      const token = await userCredential.user.getIdToken();
-      localStorage.setItem("token", token);
-      const profile = await this.getProfile(userCredential.user.uid);
-      return { user: userCredential.user, profile };
-    } catch (error: any) { return { error: error.message }; }
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: credentials.email, password: credentials.password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.startSession(data.user.uid);
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
   async register(credentials: any) {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, credentials.email, credentials.password);
-      const token = await userCredential.user.getIdToken();
-      localStorage.setItem("token", token);
-      return { user: userCredential.user };
-    } catch (error: any) { return { error: error.message }; }
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.startSession(data.user.uid);
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
   // Profile
@@ -129,7 +149,7 @@ class BackendService {
     if (!uid) return null;
     try {
       const url = email ? `/api/profile/${uid}?email=${encodeURIComponent(email)}` : `/api/profile/${uid}`;
-      const res = await fetch(url);
+      const res = await this.authFetch(url);
       return res.ok ? await res.json() : null;
     } catch (e) { return null; }
   }
@@ -151,7 +171,7 @@ class BackendService {
 
   async saveProfile(profile: any) {
     try {
-      const res = await fetch('/api/profile', {
+      const res = await this.authFetch('/api/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profile)

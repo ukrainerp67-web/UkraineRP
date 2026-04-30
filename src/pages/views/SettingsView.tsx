@@ -1,13 +1,12 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { auth } from '../../firebase';
 import { backend } from '../../services/backendService';
 import { LogOut, Trash2, Volume2, Monitor, Settings } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, logout } = useAuth();
 
-  const handleLogout = () => auth.signOut();
+  const handleLogout = () => logout();
   
   const handleDeleteAccount = async () => {
     if (!profile) return;
@@ -15,10 +14,10 @@ export const SettingsView: React.FC = () => {
     if (confirm) {
       try {
         await backend.deleteProfile(profile.uid);
-        await auth.currentUser?.delete();
+        logout();
       } catch (error) {
         console.error('Error deleting account', error);
-        auth.signOut();
+        logout();
       }
     }
   };

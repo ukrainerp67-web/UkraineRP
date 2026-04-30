@@ -223,31 +223,6 @@ export const Registration: React.FC = () => {
                 >
                     {authMode === 'login' ? 'Створити акаунт' : 'Перейти до входу'}
                 </button>
-                
-                <p className="text-[10px] text-text-dim uppercase tracking-widest text-center mb-4">або</p>
-                
-                <button
-                    type="button"
-                  onClick={async () => {
-                        setLoading(true);
-                        try {
-                            const { googleProvider, auth } = await import('../firebase');
-                            googleProvider.setCustomParameters({ prompt: 'select_account' });
-                            const { signInWithPopup } = await import('firebase/auth');
-                            await signInWithPopup(auth, googleProvider);
-                            // AuthContext will handle the rest via onAuthStateChanged
-                        } catch (e: any) {
-                            console.error("Google Auth Error:", e);
-                            alert(`Помилка: ${e.message}`);
-                        } finally {
-                            setLoading(false);
-                        }
-                    }}
-                    className="w-full py-3 bg-white/5 border border-white/10 text-white rounded-xl flex items-center justify-center gap-3 hover:bg-white/10 transition-all text-xs font-bold"
-                >
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-                    УВІЙТИ ЧЕРЕЗ GOOGLE
-                </button>
             </div>
             
             <p className="mt-6 text-[10px] text-text-dim uppercase tracking-tighter text-center">Входячи в гру, ви погоджуєтесь з правилами сервера</p>

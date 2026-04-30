@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { backend } from '../services/backendService';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../firebase';
 
 interface BankCard {
   type: 'e-support' | 'pension' | 'standard' | 'usd' | 'eur';
@@ -90,6 +88,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null, 
   profile: null, 
   loading: true,
+  isRecovering: false,
   onlinePlayers: [],
   refreshProfile: async () => {},
   login: async () => ({}),
@@ -121,10 +120,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const handleSetUser = (u: AuthUser | null) => {
+  const handleSetUser = (u: AuthUser | null, token?: string) => {
     setUser(u);
     if (u) {
       localStorage.setItem("user", JSON.stringify(u));
+      if (token) localStorage.setItem("token", token);
     } else {
       localStorage.removeItem("user");
       localStorage.removeItem("token");
@@ -133,8 +133,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (credentials: any) => {
     const data = await backend.login(credentials);
-    if (data.user) {
-      handleSetUser(data.user);
+    if (data.success && data.user) {
+      handleSetUser(data.user, data.token);
       const profileData = await backend.getProfile(data.user.uid, data.user.email || undefined);
       setProfile(profileData);
     }
@@ -143,22 +143,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const registerUser = async (credentials: any) => {
     const data = await backend.register(credentials);
-    if (data.user) {
-      handleSetUser(data.user);
+    if (data.success && data.user) {
+      handleSetUser(data.user, data.token);
       setProfile(null);
     }
     return data;
   };
 
-  const logout = async () => {
-    try {
-      await backend.logout();
-      setUser(null);
-      setProfile(null);
-      backend.disconnect();
-    } catch (e) {
-      console.error("Logout error:", e);
-    }
+  const logout = () => {
+    handleSetUser(null);
+    setProfile(null);
+    backend.disconnect();
+    window.location.href = '/'; // Simple redirect on logout
   };
 
   const updateBusinessState = async (businessId: string, updates: Partial<any>) => {
@@ -168,13 +164,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
     const updatedProfile = { ...profile, businesses: newBusinesses, updatedAt: new Date().toISOString() };
     await backend.saveProfile(updatedProfile);
-    // Profile is updated via listener
   };
 
   const collectProfits = async (businessId: string, gross: number, evade: boolean = false) => {
     if (!profile) return;
     
-    // Use global tax rate instead of local SR-based one for business
     const taxRate = globalTaxRate;
     const taxAmount = evade ? 0 : Math.floor(gross * taxRate);
     const netProfit = gross - taxAmount;
@@ -196,7 +190,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt: now
     };
 
-    // If card exists, update card balance instead of global balance
     if (updatedProfile.bankCards && updatedProfile.bankCards.length > 0) {
        const cardIdx = updatedProfile.bankCards.findIndex(c => c.type === 'standard');
        const actualIdx = cardIdx !== -1 ? cardIdx : 0;
@@ -204,22 +197,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!evade && taxAmount > 0) {
-      // THIS IS THE CRITICAL LINE: Ensure it waits for the budget update
-      const budgetResult = await backend.addToBudget(taxAmount);
-      if (!budgetResult.success) {
-          console.error("Failed to add to budget", budgetResult.error);
-      }
+      await backend.addToBudget(taxAmount);
       
       await backend.logEvent({
         type: 'tax',
         player: `${profile.firstName} ${profile.lastName}`,
-        message: `сплачено податків на суму ₴${taxAmount.toLocaleString()} до держбюджету (Виручка: ₴${gross.toLocaleString()})`
+        message: `сплачено податків на суму ₴${taxAmount.toLocaleString()} до держбюджету`
       });
     } else if (evade) {
       await backend.logEvent({
         type: 'evade',
         player: `${profile.firstName} ${profile.lastName}`,
-        message: `ризикнув та забрав весь прибуток ₴${gross.toLocaleString()} собі в кишеню`
+        message: `ризикнув та забрав прибуток ₴${gross.toLocaleString()} собі`
       });
     }
 
@@ -253,13 +242,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     await backend.saveProfile(updatedProfile);
-    
-    await backend.logEvent({
-      type: 'stock',
-      player: `${profile.firstName} ${profile.lastName}`,
-      message: `закупив товар для всіх своїх підприємств на суму ₴${totalStockCost.toLocaleString()}!`
-    });
-
     return totalStockCost;
   };
 
@@ -293,23 +275,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let playersUnsubscribe: (() => void) | null = null;
     let globalUnsubscribe: (() => void) | null = null;
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("Auth State Changed: Firebase UID =", firebaseUser?.uid);
-      // Cleanup previous subscriptions
-      if (profileUnsubscribe) profileUnsubscribe();
-      if (playersUnsubscribe) playersUnsubscribe();
-      if (globalUnsubscribe) globalUnsubscribe();
+    const initAuth = async () => {
+      const token = localStorage.getItem("token");
+      const savedUser = localStorage.getItem("user");
 
-      try {
-        if (firebaseUser) {
-          const authUser: AuthUser = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-          };
-          setUser(authUser);
-          localStorage.setItem("user", JSON.stringify(authUser));
+      if (token && savedUser) {
+        try {
+          const authUser = JSON.parse(savedUser);
+          // Verify with backend
+          const res = await fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (!res.ok) throw new Error('Session expired');
+          
+          const data = await res.json();
+          setUser(data.user);
 
-          // 0. Global state listener
+          // Subscriptions
           globalUnsubscribe = backend.onGlobalStateUpdate((state) => {
             if (state) {
               setGlobalTaxRate(state.taxRate || 0.20);
@@ -317,144 +300,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           });
 
-          // 1. Profile real-time polling replacement for onSnapshot
-          profileUnsubscribe = backend.onProfileUpdate(firebaseUser.uid, firebaseUser.email, async (profileData) => {
-            console.log("AuthContext: Received profile data from backend:", profileData ? 'Found' : 'Null');
-            
-            // Set loading false once we've attempted to fetch the profile
-            setLoading(false);
-            setIsRecovering(false);
-
-            if (!profileData && firebaseUser.email === 'ukrainerp67@gmail.com') {
-                console.log("AuthContext: Admin profile not found, auto-creating...");
-                const adminProfile: UserProfile = {
-                    uid: firebaseUser.uid,
-                    email: firebaseUser.email,
-                    firstName: 'Головний',
-                    lastName: 'Адмін',
-                    sex: 'M',
-                    birthDate: '1990-01-01',
-                    passportPhoto: '',
-                    signature: 'Admin',
-                    balance: 1000000,
-                    socialRating: 1000,
-                    status: 'Головний Адмін',
-                    role: 'admin',
-                    isVerified: true,
-                    bankCards: [{
-                        type: 'standard',
-                        number: 'ADMIN-CARD-0001',
-                        balance: 1000000,
-                        label: 'Держ Карта',
-                        createdAt: new Date().toISOString(),
-                        passportId: 'UA-000001'
-                    }]
-                };
-                backend.saveProfile(adminProfile).then(() => {
-                    setProfile(adminProfile);
-                    setLoading(false);
-                });
-                return;
-            }
-
-            if (!profileData) {
-                return;
-            }
-            
-            const isAdminEmail = firebaseUser.email === 'ukrainerp67@gmail.com'; 
-            let needsUpdate = false;
-            const updates: any = {};
-
-            // --- MIGRATION: Old single card to array ---
-            if ((profileData as any).bankCard && !profileData.bankCards) {
-                const oldCard = (profileData as any).bankCard;
-                profileData.bankCards = [{
-                    type: oldCard.type || 'standard',
-                    number: oldCard.number || '0000 0000 0000 0000',
-                    balance: oldCard.balance || profileData.balance || 0,
-                    createdAt: oldCard.createdAt || new Date().toISOString(),
-                    passportId: oldCard.passportId || '',
-                    label: oldCard.label || 'Основна карта'
-                }];
-                needsUpdate = true;
-                updates.bankCards = profileData.bankCards;
-                updates.bankCard = null; // Cleanup
-            }
-
-            if (isAdminEmail && (profileData.role !== 'admin' || !profileData.isVerified)) {
-                profileData.role = 'admin';
-                profileData.status = 'Головний Адмін';
-                profileData.isVerified = true;
-                needsUpdate = true;
-                updates.role = 'admin';
-                updates.status = 'Головний Адмін';
-                updates.isVerified = true;
-            }
-
-            if (needsUpdate) {
-               await backend.patchProfile(firebaseUser.uid, updates);
-            }
-
-            // Ensure data defaults
-            profileData = {
-              businesses: [],
-              taxDebt: 0,
-              ...profileData
-            };
-
-            // Super admin omni-privileges and immunity
-            if (isAdminEmail) {
-              profileData.role = 'admin';
-              profileData.status = 'Головний Адмін';
-              profileData.isFrozen = false;
-              profileData.muteUntil = null;
-              profileData.isVerified = true;
-            }
-
+          profileUnsubscribe = backend.onProfileUpdate(data.user.uid, data.user.email, (profileData) => {
             setProfile(profileData);
-            setLoading(false); // Successfully loaded profile
-            
-            // Re-join game with presence
-            backend.joinGame({
-              uid: firebaseUser.uid,
-              name: `${profileData.firstName} ${profileData.lastName}`,
-              status: 'online'
-            });
+            setLoading(false);
+            if (profileData) {
+              backend.joinGame({
+                uid: data.user.uid,
+                name: `${profileData.firstName} ${profileData.lastName}`,
+                status: 'online'
+              });
+            }
           });
 
-          // 2. Global players listener
           playersUnsubscribe = backend.onPlayersUpdate((players) => {
             setOnlinePlayers(players);
           });
 
-        } else {
-          setUser(null);
-          setProfile(null);
-          setOnlinePlayers([]);
-          localStorage.removeItem("user");
-          localStorage.removeItem("token");
-          setLoading(false); // Immediate for non-logged users
+        } catch (e) {
+          console.warn("Auth init failed", e);
+          handleSetUser(null);
+          setLoading(false);
         }
-      } catch (err) {
-        console.error("Error in onAuthStateChanged wrapper:", err);
-        setLoading(false); // Cleanup on error
+      } else {
+        setLoading(false);
       }
-    });
+    };
 
-    // Failsafe: force loading false after 8 seconds if it's still stuck
-    const failsafe = setTimeout(() => {
-      setLoading(prev => {
-        if (prev) {
-          console.warn("Auth loading failsafe triggered");
-          return false;
-        }
-        return prev;
-      });
-    }, 8000);
+    initAuth();
 
     return () => {
-      unsubscribe();
-      clearTimeout(failsafe);
       if (profileUnsubscribe) profileUnsubscribe();
       if (playersUnsubscribe) playersUnsubscribe();
       if (globalUnsubscribe) globalUnsubscribe();

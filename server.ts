@@ -5,6 +5,8 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 // Railway/AI Studio Alias fix: 
 // Якщо змінна називається українською (як на скріншоті), копіюємо її в DATABASE_URL для Prisma
@@ -14,6 +16,8 @@ if (!process.env.DATABASE_URL && process.env['URL-адреса_БАЗИ_ДАНИ
 if (!process.env.DATABASE_URL && process.env['ПУБЛІЧНА_URL-АДРЕСА_БАЗИ_ДАНИХ']) {
   process.env.DATABASE_URL = process.env['ПУБЛІЧНА_URL-АДРЕСА_БАЗИ_ДАНИХ'];
 }
+
+const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const prisma = new PrismaClient({
@@ -85,7 +89,75 @@ async function startServer() {
 
   app.use(cors());
   app.use(morgan('dev'));
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+
+  // --- Auth Routes (Replacement for Firebase) ---
+  app.post('/api/auth/register', async (req, res) => {
+    const { email, password, username, firstName, lastName } = req.body;
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const uid = `up-${Math.random().toString(36).substring(2, 11)}`;
+      
+      const player = await prisma.player.create({
+        data: {
+          uid,
+          email,
+          username: username || email.split('@')[0] + '-' + Math.floor(Math.random() * 1000),
+          passwordHash: hashedPassword,
+          firstName: firstName || 'Гість',
+          lastName: lastName || 'України',
+          balance: 5000,
+          socialRating: 50,
+          status: 'Громадянин',
+          role: email === 'ukrainerp67@gmail.com' ? 'admin' : 'user',
+          isVerified: email === 'ukrainerp67@gmail.com'
+        }
+      });
+
+      const token = jwt.sign({ uid: player.uid, email: player.email }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ success: true, token, user: { uid: player.uid, email: player.email } });
+    } catch (e: any) {
+      console.error('[AUTH] Register error:', e.message);
+      res.status(400).json({ success: false, error: 'Цей Gmail вже зареєстрований або дані некоректні' });
+    }
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+      const player = await prisma.player.findUnique({ where: { email } });
+      if (!player || !player.passwordHash) {
+        return res.status(401).json({ success: false, error: 'Невірний email або пароль' });
+      }
+
+      const isMatch = await bcrypt.compare(password, player.passwordHash);
+      if (!isMatch) {
+        return res.status(401).json({ success: false, error: 'Невірний email або пароль' });
+      }
+
+      const token = jwt.sign({ uid: player.uid, email: player.email }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ success: true, token, user: { uid: player.uid, email: player.email } });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get('/api/auth/me', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No authorization header' });
+    
+    const token = authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No token provided' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const player = await prisma.player.findUnique({ where: { uid: decoded.uid } });
+      if (!player) return res.status(404).json({ error: 'Користувача не знайдено' });
+      res.json({ user: { uid: player.uid, email: player.email } });
+    } catch (e) {
+      res.status(401).json({ error: 'Сесія завершена, увійдіть знову' });
+    }
+  });
 
   // --- API Routes ---
 
@@ -484,18 +556,17 @@ async function startServer() {
 
   // --- Background Jobs ---
   setInterval(async () => {
+    if (!isDbReady) return;
     try {
       const players = await prisma.player.findMany({
-        select: { uid: true, properties: true } // Properties were json
+        select: { uid: true, properties: true } 
       });
       const config = await prisma.systemConfig.findUnique({ where: { id: 'global' } });
       if (!config) return;
 
       let totalTaxCollected = 0;
-      // Simple tax logic - for businesses you'd need a Businesses model or logic
-      // In this version we'll just mock it or skip since businesses are JSON in old version
-      // Let's just update the budget slightly for the demo
-      totalTaxCollected = Math.floor(Math.random() * 1000); 
+      // Mock tax collection loop
+      totalTaxCollected = Math.floor(Math.random() * 500); 
 
       if (totalTaxCollected > 0) {
         await prisma.systemConfig.update({
@@ -504,7 +575,8 @@ async function startServer() {
         });
       }
     } catch (e) {
-      console.error('[JOBS] Error in tax cycle:', e);
+      // Silent log for background jobs to avoid spamming if DB flickers
+      console.error('[JOBS] Cycle failed (likely DB connection):', e instanceof Error ? e.message : 'Unknown error');
     }
   }, 60000);
 

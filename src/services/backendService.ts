@@ -24,13 +24,13 @@ class BackendService {
     this.currentUserUid = uid;
     if (!this.presenceInterval) {
       this.presenceInterval = setInterval(() => {
-        fetch(`/api/presence/${uid}`, { method: 'POST' });
+        this.authFetch(`/api/presence/${uid}`, { method: 'POST' });
         this.syncOnlinePlayers();
       }, 3000);
       this.syncOnlinePlayers();
     }
     if (!this.notificationsInterval) {
-      this.notificationsInterval = setInterval(() => this.syncNotifications(uid), 2000);
+      this.notificationsInterval = setInterval(() => this.syncNotifications(uid), 3000);
     }
     if (!this.messagesInterval) {
       this.messagesInterval = setInterval(() => this.syncMessages(), 2000);
@@ -77,7 +77,7 @@ class BackendService {
 
   private async syncOnlinePlayers() {
      try {
-       const res = await fetch('/api/online');
+       const res = await this.authFetch('/api/online');
        const data = await res.json();
        const players = Array.isArray(data) ? data : [];
        if (this.playersUpdateCallback) this.playersUpdateCallback(players);
@@ -86,7 +86,7 @@ class BackendService {
 
   private async syncNotifications(uid: string) {
     try {
-      const res = await fetch(`/api/users/${uid}/notifications`);
+      const res = await this.authFetch(`/api/users/${uid}/notifications`);
       const notifications = await res.json();
       // Internal event for UI if needed, for simplicity we rely on manual fetch in Notifications component
     } catch (e) {}
@@ -94,7 +94,7 @@ class BackendService {
 
   private async syncMessages() {
     try {
-      const res = await fetch('/api/messages');
+      const res = await this.authFetch('/api/messages');
       const data = await res.json();
       const messages = Array.isArray(data) ? data : [];
       if (this.messageCallback) {

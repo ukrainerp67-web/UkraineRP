@@ -57,6 +57,7 @@ const authenticateToken = (req: any, res: any, next: any) => {
     try {
       const dbUser = await prisma.player.findUnique({ where: { uid: user.uid } });
       if (!dbUser) {
+        console.warn(`[AUTH] Kicking user ${user.uid} - not found in database.`);
         return res.status(401).json({ error: 'Ваш акаунт було видалено. Перенаправлення...' });
       }
       req.user = user;
@@ -498,8 +499,9 @@ async function startServer() {
   });
 
   // Notifications
-  app.get('/api/users/:uid/notifications', async (req, res) => {
+  app.get('/api/users/:uid/notifications', authenticateToken, async (req: any, res) => {
     try {
+      if (req.user.uid !== req.params.uid) return res.status(403).json({ error: 'Auth mismatch' });
       const notifications = await prisma.notification.findMany({
         where: { userId: req.params.uid },
         orderBy: { id: 'desc' }
@@ -536,7 +538,7 @@ async function startServer() {
   });
 
   // Messages / Chat
-  app.get('/api/messages', async (req, res) => {
+  app.get('/api/messages', authenticateToken, async (req: any, res) => {
     try {
       const messages = await prisma.globalEvent.findMany({
         where: { type: 'chat' },
@@ -633,7 +635,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/online', async (req, res) => {
+  app.get('/api/online', authenticateToken, async (req: any, res) => {
     try {
       const thirtySecondsAgo = new Date(Date.now() - 30000);
       const onlinePresence = await prisma.presence.findMany({
@@ -667,18 +669,28 @@ async function startServer() {
         return res.status(404).json({ success: false, error: 'Гравець не знайдений' });
       }
 
-      await prisma.$transaction([
-        prisma.notification.deleteMany({ where: { userId: uid } }),
-        prisma.fine.deleteMany({ where: { userId: uid } }),
-        prisma.presence.deleteMany({ where: { uid } }),
-        prisma.player.delete({ where: { uid } })
-      ]);
+      const playerId = targetPlayer.id;
+
+      console.log(`[ADMIN-DELETE] Attempting transaction for ${uid} (DB ID: ${playerId})`);
+      try {
+        await prisma.$transaction([
+          prisma.playerAchievement.deleteMany({ where: { playerId } }),
+          prisma.inventoryItem.deleteMany({ where: { playerId } }),
+          prisma.notification.deleteMany({ where: { userId: uid } }),
+          prisma.fine.deleteMany({ where: { userId: uid } }),
+          prisma.presence.deleteMany({ where: { uid } }),
+          prisma.player.delete({ where: { uid } })
+        ]);
+        console.log(`[ADMIN-DELETE] Transaction successful for ${uid}`);
+      } catch (transError: any) {
+        console.error('[ADMIN-DELETE] Transaction failed:', transError);
+        throw new Error(`Transaction failed: ${transError.message}`);
+      }
       
-      console.log(`[ADMIN-DELETE] Success! Account ${uid} (Email: ${targetPlayer.email}) fully removed.`);
       res.json({ success: true });
     } catch (e: any) {
       console.error('[ADMIN-DELETE] CRITICAL ERROR:', e);
-      res.status(500).json({ success: false, error: e.message });
+      res.status(500).json({ success: false, error: e.message || 'Unknown server error' });
     }
   });
 
@@ -694,8 +706,13 @@ async function startServer() {
     }
   });
 
-  app.post('/api/presence/:uid', async (req, res) => {
+  app.post('/api/presence/:uid', authenticateToken, async (req: any, res) => {
     try {
+      // The uid from path should match the authenticated user
+      if (req.params.uid !== req.user.uid) {
+        return res.status(403).json({ error: 'Identity mismatch' });
+      }
+
       await prisma.presence.upsert({
         where: { uid: req.params.uid },
         update: { lastActive: new Date(), status: 'online' },

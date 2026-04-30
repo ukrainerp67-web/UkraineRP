@@ -68,7 +68,11 @@ async function checkDatabase(retries = 20) {
       dbLastError = '';
       return true;
     } catch (e: any) {
-      dbLastError = e.message;
+      if (e.message.includes('postgres.railway.internal') || e.message.includes('Can\'t reach database server')) {
+        dbLastError = 'Помилка підключення: RAILWAY INTERNAL URL не працює ззовні. Будь ласка, вставте PUBLIC CONNECTION STRING у Settings -> Environment Variables в AI Studio.';
+      } else {
+        dbLastError = e.message;
+      }
       console.error(`❌ Спроба ${i+1}/${retries}: Помилка:`, e.message);
       if (i < retries - 1) {
         await new Promise(r => setTimeout(r, 4000));

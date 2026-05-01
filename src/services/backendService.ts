@@ -607,7 +607,9 @@ class BackendService {
 
   async getMafiaTargets() {
     try {
-      const res = await this.authFetch('/api/mafia/targets');
+      const res = await this.authFetch(`/api/mafia/targets?t=${Date.now()}`, {
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
       return res.ok ? await res.json() : [];
     } catch (e: any) { return []; }
   }

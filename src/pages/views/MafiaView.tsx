@@ -15,37 +15,51 @@ export const MafiaView: React.FC = () => {
   const isSuperAdmin = profile?.email === 'ukrainerp67@gmail.com';
   const canJoin = isSuperAdmin || (profile && profile.socialRating <= -15);
 
-  const isMafia = profile?.role === 'mafia' || profile?.role === 'admin' || [
-    'Дон (Бос мафії)',
-    'Консильєрі (Радник)',
-    'Капо (Капітан)',
-    'Бойовик (Силовик)'
-  ].includes(profile?.status || '');
+  const isMafia = useMemo(() => {
+    return profile?.role === 'mafia' || profile?.role === 'admin' || [
+      'Дон (Бос мафії)',
+      'Консильєрі (Радник)',
+      'Капо (Капітан)',
+      'Бойовик (Силовик)'
+    ].includes(profile?.status || '');
+  }, [profile?.role, profile?.status]);
 
   useEffect(() => {
-    let interval: any;
+    let playersInterval: any;
+    let targetsInterval: any;
     
+    const fetchPlayers = async () => {
+      try {
+        const playersList = await backend.searchUsers('');
+        setPlayers(playersList || []);
+      } catch (e) {
+        console.error("Error fetching players:", e);
+      }
+    };
+
+    const fetchTargets = async () => {
+      try {
+        const targetList = await backend.getMafiaTargets();
+        setTargets(targetList || []);
+      } catch (e) {
+        console.error("Error fetching mafia targets:", e);
+      }
+    };
+
     if (isMafia) {
-      const fetchData = async () => {
-        try {
-          const [playersList, targetList] = await Promise.all([
-            backend.searchUsers(''),
-            backend.getMafiaTargets()
-          ]);
-          setPlayers(playersList);
-          setTargets(targetList);
-        } catch (e) {
-          console.error("Error fetching mafia data:", e);
-        }
-      };
+      fetchPlayers();
+      fetchTargets();
       
-      fetchData();
-      // Polling every 5 seconds for "immediate" updates as requested
-      interval = setInterval(fetchData, 5000);
+      // Players list can be refreshed less often
+      playersInterval = setInterval(fetchPlayers, 30000);
+      
+      // Targets list needs to be "immediate"
+      targetsInterval = setInterval(fetchTargets, 2000);
     }
     
     return () => {
-      if (interval) clearInterval(interval);
+      if (playersInterval) clearInterval(playersInterval);
+      if (targetsInterval) clearInterval(targetsInterval);
     };
   }, [isMafia]);
 
@@ -261,7 +275,10 @@ export const MafiaView: React.FC = () => {
                  className={`p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all ${loading ? 'animate-spin' : ''}`}
                  title="Оновити список"
                >
-                 <Zap className="w-3 h-3 text-red-500" />
+                 <div className="relative">
+                    <Zap className="w-3 h-3 text-red-500" />
+                    <div className="absolute -inset-1 bg-red-500/20 rounded-full animate-ping pointer-events-none" />
+                 </div>
                </button>
             </div>
             

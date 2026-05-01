@@ -407,6 +407,42 @@ async function startServer() {
     }
   });
 
+  app.patch('/api/admin/users/:targetUid', authenticateToken, async (req: any, res) => {
+    try {
+      const requester = await prisma.player.findUnique({ where: { uid: req.user.uid } });
+      if (requester?.role !== 'admin' && requester?.email !== 'ukrainerp67@gmail.com') {
+        return res.status(403).json({ error: 'Доступ заборонено' });
+      }
+
+      const { targetUid } = req.params;
+      const updates = req.body;
+      const isSuperAdmin = req.user.email === 'ukrainerp67@gmail.com';
+
+      // Base updates
+      const data: any = {
+        balance: updates.balance,
+        socialRating: updates.socialRating,
+        isVerified: updates.isVerified,
+        status: updates.status
+      };
+
+      // Only super admin can change functional roles
+      if (isSuperAdmin && updates.role) {
+        data.role = updates.role;
+      }
+
+      const updatedUser = await prisma.player.update({
+        where: { uid: targetUid },
+        data
+      });
+
+      res.json(updatedUser);
+    } catch (e: any) {
+      console.error('[ADMIN] Update user error:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/api/profile/:uid', authenticateToken, async (req: any, res) => {
     const uid = req.params.uid;
     const email = req.query.email as string;

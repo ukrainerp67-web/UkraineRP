@@ -800,6 +800,158 @@ async function startServer() {
     }
   });
 
+  // --- Fraction Management Endpoints ---
+
+  // RADA: Shadow Audit
+  app.post('/api/rada/audit', authenticateToken, async (req: any, res) => {
+    const { targetUid } = req.body;
+    if (!req.dbUser || (req.dbUser.status !== 'Працівник ВФБ' && req.dbUser.role !== 'admin')) {
+      return res.status(403).json({ error: 'Доступ лише для працівників ВФБ' });
+    }
+    try {
+      const target = await prisma.player.findUnique({ where: { uid: targetUid } });
+      if (!target) return res.status(404).json({ error: 'Ціль не знайдена' });
+      
+      const businesses = (target.businesses as any[]) || [];
+      const auditData = businesses.map(b => ({
+        name: b.name || b.businessId,
+        evasions: b.evasionCount || 0,
+        isBlocked: b.isBlocked || false
+      }));
+
+      res.json({ success: true, targetName: `${target.firstName} ${target.lastName}`, auditData });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // RADA: Fire Employee
+  app.post('/api/rada/fire', authenticateToken, async (req: any, res) => {
+    const { targetUid, reason } = req.body;
+    if (!req.dbUser || (req.dbUser.status !== 'Президент' && req.dbUser.role !== 'admin')) {
+      return res.status(403).json({ error: 'Тільки Президент може звільняти працівників' });
+    }
+    try {
+      await prisma.player.update({
+        where: { uid: targetUid },
+        data: { status: 'Громадянин', role: 'user' }
+      });
+      await prisma.notification.create({
+        data: {
+          userId: targetUid,
+          title: 'Вас звільнено!',
+          message: `Президент звільнив вас з посади. Причина: ${reason}`,
+          type: 'alert'
+        }
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // BANK: Perform Banking Action
+  app.post('/api/bank/action', authenticateToken, async (req: any, res) => {
+    const { actionType, targetId, amount, reason } = req.body;
+    const isBanker = ['Голова Банку', 'Директор кредитного відділу', 'Керівник фінмоніторингу', 'Головний касир', 'Колектор банку'].includes(req.dbUser?.status || '') || req.dbUser?.role === 'admin';
+    
+    if (!isBanker) return res.status(403).json({ error: 'Доступ лише для співробітників Банку' });
+
+    try {
+      if (actionType === 'direct_payout' && targetId) {
+        await prisma.player.update({ where: { uid: targetId }, data: { balance: { increment: amount } } });
+      } else if (actionType === 'issue_loan' && targetId) {
+        await prisma.player.update({ where: { uid: targetId }, data: { balance: { increment: amount } } });
+      } else if (actionType === 'debt_notice' && targetId) {
+        await prisma.fine.create({ 
+          data: { userId: targetId, amount, reason: `Заборгованість по кредиту: ${reason}`, deadline: new Date(Date.now() + 24 * 3600000).toISOString() } 
+        });
+      }
+
+      await prisma.globalEvent.create({
+        data: { type: 'bank', message: `[БАНК] Виконано дію: ${actionType} для ${targetId || 'системи'}. Сума: ₴${amount || 0}. ${reason}`, player: req.dbUser.firstName }
+      });
+
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // MAFIA: Perform Action
+  app.post('/api/mafia/action', authenticateToken, async (req: any, res) => {
+    const { actionType, targetId, reason } = req.body;
+    const isMafia = ['Дон (Бос мафії)', 'Консильєрі (Радник)', 'Капо (Капітан)', 'Бойовик (Силовик)'].includes(req.dbUser?.status || '') || req.dbUser?.role === 'admin';
+
+    if (!isMafia) return res.status(403).json({ error: 'Ви не належите до сім\'ї' });
+
+    try {
+      await prisma.globalEvent.create({
+        data: { type: 'mafia', message: `[МАФІЯ] Наказ: ${actionType} проти ${targetId || 'невідомо'}. Обґрунтування: ${reason}`, player: 'Shadow' }
+      });
+      if (targetId) {
+        await prisma.notification.create({
+          data: { userId: targetId, title: 'Ви під прицілом!', message: 'Ви відчуваєте на собі погляди людей у чорному...', type: 'alert' }
+        });
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // MAFIA: Get Targets (Evasion List)
+  app.get('/api/mafia/targets', authenticateToken, async (req, res) => {
+    try {
+      const users = await prisma.player.findMany({
+        where: { businesses: { not: [] as any } }
+      });
+      const targets: any[] = [];
+      users.forEach(u => {
+        const bz = (u.businesses as any[]) || [];
+        bz.forEach(b => {
+          if ((b.evasionCount || 0) >= 1) {
+            targets.push({
+              id: b.businessId || b.name,
+              name: b.name || b.businessId,
+              ownerName: `${u.firstName} ${u.lastName}`,
+              ownerUid: u.uid,
+              evasions: b.evasionCount || 0
+            });
+          }
+        });
+      });
+      res.json(targets.sort((a, b) => b.evasions - a.evasions));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // MAFIA: Fire Member
+  app.post('/api/mafia/fire', authenticateToken, async (req: any, res) => {
+    const { targetUid, reason } = req.body;
+    if (!req.dbUser || (req.dbUser.status !== 'Дон (Бос мафії)' && req.dbUser.role !== 'admin')) {
+      return res.status(403).json({ error: 'Тільки Дон може виганяти з сім\'ї' });
+    }
+    try {
+      await prisma.player.update({
+        where: { uid: targetUid },
+        data: { status: 'Громадянин', role: 'user' }
+      });
+      await prisma.notification.create({
+        data: {
+          userId: targetUid,
+          title: 'Вас вигнано!',
+          message: `Вас було виключено з мафіозної сім'ї. Причина: ${reason}`,
+          type: 'alert'
+        }
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post('/api/presence/:uid', authenticateToken, async (req: any, res) => {
     try {
       // The uid from path should match the authenticated user

@@ -243,6 +243,38 @@ export const BankView: React.FC = () => {
     );
   };
 
+  const [players, setPlayers] = useState<any[]>([]);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>('');
+  const [actionAmount, setActionAmount] = useState<string>('10000');
+  const [actionReason, setActionReason] = useState<string>('');
+
+  useEffect(() => {
+    const fetchPlayers = async () => {
+      const list = await backend.searchUsers('');
+      setPlayers(list);
+    };
+    fetchPlayers();
+  }, []);
+
+  const handleBankWorkerAction = async (actionType: string) => {
+    if (!profile) return;
+    setIsProcessing(true);
+    const res = await backend.performBankAction(
+      profile.uid,
+      actionType,
+      selectedTargetId,
+      parseInt(actionAmount),
+      actionReason
+    );
+    if (res.success) {
+      alert(`Дію [${actionType}] успішно виконано!`);
+      setActionReason('');
+    } else {
+      alert(`Помилка: ${(res as any).error || 'Дію відхилено'}`);
+    }
+    setIsProcessing(false);
+  };
+
   const isBankEmployee = profile?.role === 'bank' || profile?.role === 'admin' || [
     'Голова Банку',
     'Директор кредитного відділу',
@@ -276,62 +308,176 @@ export const BankView: React.FC = () => {
       </header>
 
       {isBankEmployee && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <section className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-yellow-500/10 rounded-lg">
                 <Landmark className="w-5 h-5 text-yellow-400" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-white uppercase tracking-wider">Панель Співробітника Банку</h3>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Панель Управління Банком</h3>
                 <p className="text-[10px] text-text-dim uppercase tracking-widest">{profile?.status || profile?.role}</p>
               </div>
             </div>
 
-            <div className="space-y-3">
-              {(profile?.status === 'Голова Банку' || profile?.role === 'admin') && (
-                <>
-                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
-                    <ArrowUpRight className="w-5 h-5 text-blue-400" />
-                    <div>
-                      <p className="text-xs font-bold text-white uppercase">Випуск держоблігацій</p>
-                      <p className="text-[9px] text-text-dim">Залучення коштів до бюджету</p>
-                    </div>
-                  </button>
-                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
-                    <ShieldCheck className="w-5 h-5 text-purple-400" />
-                    <div>
-                      <p className="text-xs font-bold text-white uppercase">Тіньовий договір легалізації</p>
-                      <p className="text-[9px] text-text-dim">Спрощена процедура відмивання</p>
-                    </div>
-                  </button>
-                </>
-              )}
-              {(profile?.status === 'Директор кредитного відділу' || profile?.role === 'admin') && (
-                <>
-                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
-                    <ArrowDownLeft className="w-5 h-5 text-green-400" />
-                    <div>
-                      <p className="text-xs font-bold text-white uppercase">Цільовий кредит</p>
-                      <p className="text-[9px] text-text-dim">Видача коштів під заставу</p>
-                    </div>
-                  </button>
-                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
-                    <Gavel className="w-5 h-5 text-red-400" />
-                    <div>
-                      <p className="text-xs font-bold text-white uppercase">Аукціон конфіскату</p>
-                      <p className="text-[9px] text-text-dim">Продаж заставного майна</p>
-                    </div>
-                  </button>
-                </>
-              )}
+            <div className="space-y-4">
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-text-dim uppercase tracking-widest px-1">Цільовий Клієнт / Об'єкт</label>
+                 <select 
+                   value={selectedTargetId}
+                   onChange={(e) => setSelectedTargetId(e.target.value)}
+                   className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white outline-none"
+                 >
+                   <option value="">Оберіть клієнта...</option>
+                   {players.map(p => (
+                     <option key={p.uid} value={p.uid}>{p.firstName} {p.lastName} (₴{p.balance?.toLocaleString()})</option>
+                   ))}
+                 </select>
+               </div>
+
+               <div className="grid grid-cols-2 gap-2">
+                 <div className="space-y-1">
+                   <label className="text-[9px] text-text-dim uppercase font-bold px-1">Сума операції</label>
+                   <input 
+                     type="number"
+                     placeholder="10000"
+                     value={actionAmount}
+                     onChange={(e) => setActionAmount(e.target.value)}
+                     className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none"
+                   />
+                 </div>
+                 <div className="space-y-1">
+                    <label className="text-[9px] text-text-dim uppercase font-bold px-1">Обґрунтування</label>
+                    <input 
+                      placeholder="Кредит / Штраф..."
+                      value={actionReason}
+                      onChange={(e) => setActionReason(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none"
+                    />
+                 </div>
+               </div>
+
+               <div className="grid gap-2 border-t border-white/5 pt-4">
+                  {(profile?.status === 'Голова Банку' || profile?.role === 'admin') && (
+                    <>
+                      <button 
+                        onClick={() => handleBankWorkerAction('emit_bonds')}
+                        disabled={isProcessing}
+                        className="w-full p-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <ArrowUpRight className="w-5 h-5 text-blue-400" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Випуск держоблігацій</p>
+                          <p className="text-[8px] text-text-dim">Залучення інвестицій до держбюджету</p>
+                        </div>
+                      </button>
+                      <button 
+                        onClick={() => handleBankWorkerAction('legalization')}
+                        disabled={isProcessing}
+                        className="w-full p-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <ShieldCheck className="w-5 h-5 text-purple-400" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Легалізація доходів</p>
+                          <p className="text-[8px] text-text-dim">Спеціальна банківська процедура очищення</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+
+                  {(profile?.status === 'Директор кредитного відділу' || profile?.role === 'admin') && (
+                    <>
+                      <button 
+                        onClick={() => handleBankWorkerAction('issue_loan')}
+                        disabled={isProcessing || !selectedTargetId}
+                        className="w-full p-3 bg-green-600/20 hover:bg-green-600/30 border border-green-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <ArrowDownLeft className="w-5 h-5 text-green-400" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Видача Цільового Кредиту</p>
+                          <p className="text-[8px] text-text-dim">Перерахунок коштів клієнту під відсотки</p>
+                        </div>
+                      </button>
+                      <button 
+                        onClick={() => handleBankWorkerAction('foreclosure')}
+                        disabled={isProcessing || !selectedTargetId}
+                        className="w-full p-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <Gavel className="w-5 h-5 text-red-400" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Конфіскація Майній</p>
+                          <p className="text-[8px] text-text-dim">Вилучення активів за неоплату кредитів</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+
+                  {(profile?.status === 'Керівник фінмоніторингу' || profile?.role === 'admin') && (
+                    <>
+                      <button 
+                        onClick={() => handleBankWorkerAction('freeze_account')}
+                        disabled={isProcessing || !selectedTargetId}
+                        className="w-full p-3 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <X className="w-5 h-5 text-orange-400" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Заморозка Рахунків</p>
+                          <p className="text-[8px] text-text-dim">Блокування операцій підозрілого клієнта</p>
+                        </div>
+                      </button>
+                      <button 
+                       onClick={() => handleBankWorkerAction('audit_transaction')}
+                       disabled={isProcessing || !selectedTargetId}
+                       className="w-full p-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <RefreshCw className="w-5 h-5 text-blue-400" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Аудит Транзакцій</p>
+                          <p className="text-[8px] text-text-dim">Детальна перевірка фінансових потоків</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+
+                  {(profile?.status === 'Головний касир' || profile?.role === 'admin') && (
+                    <>
+                      <button 
+                        onClick={() => handleBankWorkerAction('direct_payout')}
+                        disabled={isProcessing || !selectedTargetId}
+                        className="w-full p-3 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <Wallet className="w-5 h-5 text-emerald-400" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Пряма Виплата Готівки</p>
+                          <p className="text-[8px] text-text-dim">Видача коштів з каси банку</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+
+                  {(profile?.status === 'Колектор банку' || profile?.role === 'admin') && (
+                    <>
+                      <button 
+                        onClick={() => handleBankWorkerAction('debt_notice')}
+                        disabled={isProcessing || !selectedTargetId}
+                        className="w-full p-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/20 rounded-xl text-left flex items-center gap-3 transition-all"
+                      >
+                        <Gavel className="w-5 h-5 text-red-500" />
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">Вручення Повідомлення про Борг</p>
+                          <p className="text-[8px] text-text-dim">Офіційна вимога сплати заборгованості</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+               </div>
             </div>
-            <p className="text-[10px] text-text-dim italic text-center">Використовуйте ігрові команди в чаті для виконання обов'язків</p>
           </section>
           
           <section className="bg-card-dark border border-white/5 p-6 rounded-3xl flex flex-col items-center justify-center text-center space-y-4">
-            <RefreshCw className="w-12 h-12 text-white/5 animate-spin-slow" />
-            <p className="text-xs text-text-dim uppercase font-black tracking-widest">Очікування фінансових запитів від системи...</p>
+            <RefreshCw className={`w-12 h-12 text-white/5 ${isProcessing ? 'animate-spin' : 'animate-spin-slow'}`} />
+            <p className="text-xs text-text-dim uppercase font-black tracking-widest">Система готова до операцій</p>
+            <p className="text-[10px] text-white/20 italic">Всі дії реєструються в журналі аудиту Національного Банку</p>
           </section>
         </div>
       )}

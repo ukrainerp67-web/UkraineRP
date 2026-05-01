@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
-import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle, ShieldAlert, TrendingUp, HandCoins, UserSearch, Ban, FileWarning, Wallet, Lock } from 'lucide-react';
+import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle, ShieldAlert, TrendingUp, HandCoins, UserSearch, Ban, FileWarning, Wallet, Lock, Users } from 'lucide-react';
 import { backend } from '../../services/backendService';
 
 export const RadaView: React.FC = () => {
@@ -36,6 +36,10 @@ export const RadaView: React.FC = () => {
                   profile?.status === 'Депутат' ||
                   profile?.status === 'Працівник ВФБ';
 
+  const [auditResult, setAuditResult] = useState<any>(null);
+  const [partyName, setPartyName] = useState('');
+  const [billDescription, setBillDescription] = useState('');
+  const [dismissalReason, setDismissalReason] = useState('');
   const [players, setPlayers] = useState<any[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string>('');
   const [taxInput, setTaxInput] = useState<string>('20');
@@ -46,22 +50,6 @@ export const RadaView: React.FC = () => {
   const [fundAmount, setFundAmount] = useState<string>('50000');
   const [targetBusinesses, setTargetBusinesses] = useState<any[]>([]);
   const [fundSphere, setFundSphere] = useState<string>('Медицина');
-
-  useEffect(() => {
-    if (selectedPlayer) {
-      const fetchTargetDetails = async () => {
-        const target = await backend.getProfile(selectedPlayer);
-        if (target && target.businesses) {
-          setTargetBusinesses(target.businesses);
-        } else {
-          setTargetBusinesses([]);
-        }
-      };
-      fetchTargetDetails();
-    } else {
-      setTargetBusinesses([]);
-    }
-  }, [selectedPlayer]);
 
   useEffect(() => {
     const unsubscribe = backend.onGlobalStateUpdate((state) => {
@@ -84,10 +72,31 @@ export const RadaView: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  const govtEmployees = players.filter(p => p.role === 'rada' || [
+    'Президент', "Прем'єр-міністр", 'Міністр фінансів', 'Депутат', 'Працівник ВФБ'
+  ].includes(p.status));
+
   const handlePresidentVeto = async () => {
     if (!profile) return;
     setLoadingAction('veto');
     await backend.applyVeto(profile.uid, 'Остання зміна бюджету');
+    setLoadingAction(null);
+  };
+
+  const handleFireEmployee = async (targetId: string) => {
+    if (!profile || !dismissalReason) {
+      alert('Вкажіть причину звільнення');
+      return;
+    }
+    setLoadingAction(`fire-${targetId}`);
+    const res = await backend.fireEmployee(profile.uid, targetId, dismissalReason);
+    if (res.success) {
+      alert('Працівника звільнено!');
+      setDismissalReason('');
+      // Refresh list
+      const playersList = await backend.searchUsers('');
+      setPlayers(playersList);
+    }
     setLoadingAction(null);
   };
 
@@ -126,7 +135,24 @@ export const RadaView: React.FC = () => {
   const handleAudit = async () => {
     if (!profile || !selectedPlayer) return;
     setLoadingAction('audit');
-    await backend.auditUser(profile.uid, selectedPlayer);
+    const res = await backend.shadowAudit(profile.uid, selectedPlayer);
+    if (res.success) {
+      setAuditResult(res);
+    }
+    setLoadingAction(null);
+  };
+
+  const handleDeputyAction = async (action: string) => {
+    if (!profile) return;
+    setLoadingAction(action);
+    await backend.sendMessage({
+      senderName: profile.firstName + ' ' + profile.lastName,
+      senderPhoto: profile.passportPhoto,
+      content: `[Депутатська Дія: ${action}] ${action === 'bill' ? billDescription : partyName}`,
+      role: profile.status,
+      uid: profile.uid
+    });
+    alert('Запит надіслано до системи!');
     setLoadingAction(null);
   };
 
@@ -134,8 +160,6 @@ export const RadaView: React.FC = () => {
     if (!profile || !selectedPlayer || !bonusReason) return;
     const amount = parseInt(bonusAmount);
     setLoadingAction('bonus');
-    
-    // Original applyBonusOrPenalty now handles budget deduction for bonuses
     const res = await backend.applyBonusOrPenalty(profile.uid, selectedPlayer, amount, bonusReason);
     if (res.success) {
       alert(`Премія ₴${amount.toLocaleString()} успішно виплачена!`);
@@ -164,11 +188,8 @@ export const RadaView: React.FC = () => {
     if (!profile || !selectedPlayer) return;
     setLoadingAction(`block-${businessId}`);
     await backend.toggleBusinessBlock(profile.uid, selectedPlayer, businessId, !currentlyBlocked);
-    
-    // Refresh local state
     const target = await backend.getProfile(selectedPlayer);
     if (target && target.businesses) setTargetBusinesses(target.businesses);
-    
     setLoadingAction(null);
   };
 
@@ -187,7 +208,6 @@ export const RadaView: React.FC = () => {
   const handleDistribute = async (type: 'support' | 'pension') => {
     if (!profile) return;
     const amount = type === 'support' ? supportAmount : Math.floor(supportAmount * 1.5);
-    
     setLoadingAction(type);
     try {
       const res = await backend.distributeSocialSupport(amount, type) as any;
@@ -262,7 +282,7 @@ export const RadaView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-black text-white uppercase tracking-wider">Панель Управління Посадою</h3>
-              <p className="text-[10px] text-text-dim uppercase tracking-widest">{profile?.role}</p>
+              <p className="text-[10px] text-text-dim uppercase tracking-widest">{profile?.status || profile?.role}</p>
             </div>
           </div>
 
@@ -292,7 +312,7 @@ export const RadaView: React.FC = () => {
                   <textarea 
                     value={speech}
                     onChange={(e) => setSpeech(e.target.value)}
-                    placeholder="Ваша промова..."
+                    placeholder="Ваша промова до громадян..."
                     className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-blue-500/50 min-h-[80px]"
                   />
                   <button 
@@ -302,6 +322,98 @@ export const RadaView: React.FC = () => {
                   >
                     Виступити {loadingAction === 'speech' && '...'}
                   </button>
+                </div>
+
+                <div className="p-4 bg-red-900/10 border border-red-500/20 rounded-2xl space-y-3">
+                   <div className="flex items-center gap-2 mb-1">
+                     <Users className="w-4 h-4 text-red-500" />
+                     <p className="text-[10px] font-black text-white uppercase">Звільнення працівників ВР</p>
+                   </div>
+                   <input 
+                      placeholder="Причина звільнення..."
+                      value={dismissalReason}
+                      onChange={(e) => setDismissalReason(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none"
+                   />
+                   <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1">
+                      {govtEmployees.map(emp => (
+                        <div key={emp.uid} className="flex items-center justify-between p-2 bg-black/40 rounded-lg border border-white/5">
+                           <div className="flex flex-col">
+                             <span className="text-[10px] font-bold text-white">{emp.firstName} {emp.lastName}</span>
+                             <span className="text-[8px] text-text-dim uppercase font-bold">{emp.status}</span>
+                           </div>
+                           <button 
+                             onClick={() => handleFireEmployee(emp.uid)}
+                             disabled={loadingAction?.startsWith('fire')}
+                             className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-[8px] font-black uppercase rounded"
+                           >
+                             Звільнити
+                           </button>
+                        </div>
+                      ))}
+                      {govtEmployees.length === 0 && <p className="text-[9px] text-text-dim italic text-center py-2">Працівників не знайдено</p>}
+                   </div>
+                </div>
+              </div>
+            )}
+
+            {(profile?.role === 'Депутат' || profile?.status === 'Депутат') && (
+              <div className="space-y-4">
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                   <div className="flex items-center gap-2 mb-1">
+                     <Briefcase className="w-4 h-4 text-blue-400" />
+                     <p className="text-[10px] font-black text-white uppercase">Депутатська Діяльність</p>
+                   </div>
+                   
+                   <div className="space-y-2">
+                     <button 
+                       onClick={() => handleDeputyAction('party')}
+                       className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-left hover:bg-white/10 flex items-center gap-3"
+                     >
+                       <Award className="w-4 h-4 text-yellow-400" />
+                       <div className="flex-1">
+                         <p className="text-[10px] font-bold text-white uppercase">Створити партію</p>
+                         <p className="text-[8px] text-text-dim">Офіційна реєстрація політичної сили</p>
+                       </div>
+                     </button>
+
+                     <div className="p-3 bg-black/30 rounded-xl border border-white/5 space-y-2">
+                       <input 
+                         placeholder="Опис законопроєкту..."
+                         value={billDescription}
+                         onChange={(e) => setBillDescription(e.target.value)}
+                         className="w-full bg-black/20 border border-white/10 rounded-lg p-2 text-[10px] outline-none"
+                       />
+                       <button 
+                         onClick={() => handleDeputyAction('bill')}
+                         className="w-full py-2 bg-blue-600 rounded-lg text-[9px] font-black uppercase"
+                       >
+                         Ініціювати Законопроєкт
+                       </button>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-2">
+                       <button 
+                          onClick={() => handleDeputyAction('vote_yes')}
+                          className="py-2 bg-green-600/20 text-green-400 border border-green-500/20 text-[9px] font-black uppercase rounded-lg"
+                       >
+                         Голосувати: ЗА
+                       </button>
+                       <button 
+                          onClick={() => handleDeputyAction('vote_no')}
+                          className="py-2 bg-red-600/20 text-red-400 border border-red-500/20 text-[9px] font-black uppercase rounded-lg"
+                       >
+                         Голосувати: ПРОТИ
+                       </button>
+                     </div>
+
+                     <button 
+                        onClick={() => handleDeputyAction('lobby')}
+                        className="w-full py-3 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-white/10 rounded-xl text-[10px] font-bold text-white uppercase"
+                     >
+                       Лобіювати інтереси бізнесу
+                     </button>
+                   </div>
                 </div>
               </div>
             )}
@@ -381,7 +493,7 @@ export const RadaView: React.FC = () => {
                   >
                     <option value="">Оберіть громадянина/посадовця...</option>
                     {players.map(p => (
-                      <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.role || 'Цивільний'})</option>
+                      <option key={p.uid} value={p.uid}>{p.firstName} {p.lastName} ({p.status || 'Цивільний'})</option>
                     ))}
                   </select>
                   
@@ -436,35 +548,6 @@ export const RadaView: React.FC = () => {
                       Виписати Штраф
                     </button>
                   </div>
-
-                  {targetBusinesses.length > 0 && (
-                    <div className="pt-4 border-t border-white/5 space-y-2">
-                       <p className="text-[9px] font-black text-text-dim uppercase tracking-widest px-1">Управління майном (Блокування):</p>
-                       <div className="grid gap-2">
-                         {targetBusinesses.map((b: any) => (
-                           <div key={b.businessId} className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
-                             <div className="flex flex-col">
-                               <span className="text-[10px] font-bold text-white">{b.businessId}</span>
-                               <span className={`text-[8px] uppercase font-black ${b.isBlocked ? 'text-red-400' : 'text-green-400'}`}>
-                                 {b.isBlocked ? 'Заблоковано' : 'Активний'}
-                               </span>
-                             </div>
-                             <button 
-                               onClick={() => handleToggleBlock(b.businessId, b.isBlocked)}
-                               disabled={loadingAction !== null}
-                               className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${
-                                 b.isBlocked 
-                                   ? 'bg-green-600/20 text-green-400 hover:bg-green-600/40' 
-                                   : 'bg-red-600/20 text-red-400 hover:bg-red-600/40'
-                               }`}
-                             >
-                               {loadingAction === `block-${b.businessId}` ? '...' : (b.isBlocked ? 'Розблокувати' : 'Заблокувати')}
-                             </button>
-                           </div>
-                         ))}
-                       </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -483,7 +566,7 @@ export const RadaView: React.FC = () => {
                   >
                     <option value="">Оберіть об'єкт розслідування...</option>
                     {players.map(p => (
-                      <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.role})</option>
+                      <option key={p.uid} value={p.uid}>{p.firstName} {p.lastName} ({p.status})</option>
                     ))}
                   </select>
                   <button 
@@ -494,6 +577,32 @@ export const RadaView: React.FC = () => {
                     <Search className="w-3 h-3" />
                     Тіньовий Аудит
                   </button>
+                  
+                  {auditResult && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="p-3 bg-black/40 border border-purple-500/20 rounded-xl space-y-2 mt-4"
+                    >
+                       <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest">Звіт для: {auditResult.targetName}</p>
+                       <div className="space-y-1.5">
+                          {auditResult.auditData.map((b: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between p-2 bg-white/5 rounded-lg text-[10px]">
+                               <span className="font-bold text-white">{b.name}</span>
+                               <div className="flex items-center gap-3">
+                                 <span className={`font-black ${b.evasions >= 5 ? 'text-red-500' : 'text-text-dim'}`}>
+                                   Ухилення: {b.evasions}
+                                 </span>
+                                 <span className={b.isBlocked ? 'text-red-400' : 'text-green-400'}>
+                                   {b.isBlocked ? 'Блок' : 'ОК'}
+                                 </span>
+                               </div>
+                            </div>
+                          ))}
+                          {auditResult.auditData.length === 0 && <p className="text-[9px] text-text-dim italic">Бізнесів не виявлено</p>}
+                       </div>
+                    </motion.div>
+                  )}
                 </div>
               </div>
             )}

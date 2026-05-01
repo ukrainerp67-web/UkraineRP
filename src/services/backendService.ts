@@ -610,6 +610,136 @@ class BackendService {
     await this.patchProfile(targetId, { businesses });
     return { success: true };
   }
+
+  // --- Fraction & Role Management ---
+  async fireEmployee(adminId: string, targetId: string, reason: string) {
+    const admin = await this.getProfile(adminId);
+    const target = await this.getProfile(targetId);
+    if (!admin || !target) return { success: false, message: 'Користувач не знайдений' };
+
+    await this.patchProfile(targetId, { 
+      role: 'user', 
+      status: 'Громадянин' 
+    });
+
+    await this.logEvent({ 
+      type: 'dismissal', 
+      message: `${admin.status} звільнив ${target.firstName} ${target.lastName}. Причина: ${reason}`, 
+      player: adminId 
+    });
+
+    await this.sendNotification(targetId, {
+      title: '🚫 Звільнення',
+      message: `Вас було звільнено з посади. Причина: ${reason}`,
+      type: 'error'
+    });
+
+    return { success: true };
+  }
+
+  async shadowAudit(adminId: string, targetId: string) {
+    const target = await this.getProfile(targetId);
+    if (!target) return { success: false, message: 'Ціль не знайдена' };
+    
+    const businesses = target.businesses || [];
+    const auditData = businesses.map((b: any) => ({
+      name: b.name,
+      evasions: b.taxEvasionCount || 0,
+      isBlocked: b.isBlocked || false
+    }));
+
+    await this.logEvent({ 
+      type: 'shadow_audit', 
+      message: `ВФБ проведено тіньовий аудит бізнесів ${target.firstName} ${target.lastName}.`, 
+      player: adminId 
+    });
+
+    return { success: true, auditData, targetName: `${target.firstName} ${target.lastName}` };
+  }
+
+  // --- Bank Commands ---
+  async performBankAction(adminId: string, actionType: string, targetId?: string, amount?: number, data?: any) {
+    const admin = await this.getProfile(adminId);
+    if (!admin) return { success: false };
+
+    let message = '';
+    switch(actionType) {
+      case 'bonds': 
+        message = `Голова Банку випустив державні облігації на суму ₴${amount?.toLocaleString()}`;
+        await this.addToBudget(amount || 0);
+        break;
+      case 'laundry_deal':
+        message = `Голова Банку уклав тіньовий договір легалізації з клієнтом.`;
+        break;
+      case 'credit':
+        message = `Видано цільовий кредит для гравця на суму ₴${amount?.toLocaleString()}`;
+        if (targetId) await this.applyBonusOrPenalty(adminId, targetId, amount || 0, 'Цільовий кредит');
+        break;
+      case 'auction':
+        message = `Директор кредитного відділу оголосив аукціон конфіскованого майна.`;
+        break;
+      case 'finmon_block':
+        message = `Фінмоніторинг заблокував підозрілу транзакцію.`;
+        break;
+      case 'deposit':
+        message = `Головний касир відкрив новий депозитний рахунок.`;
+        break;
+      default:
+        message = `Співробітник банку виконав дію: ${actionType}`;
+    }
+
+    await this.logEvent({ type: 'bank_action', message, player: adminId });
+    return { success: true, message };
+  }
+
+  // --- Mafia Commands ---
+  async fireMafiaMember(bossId: string, targetId: string, reason: string) {
+    const boss = await this.getProfile(bossId);
+    const target = await this.getProfile(targetId);
+    if (!boss || !target) return { success: false };
+
+    await this.patchProfile(targetId, { role: 'user', status: 'Громадянин' });
+    await this.logEvent({ type: 'mafia_dismissal', message: `Доно звільнив ${target.firstName} ${target.lastName} з лав сім'ї. Причина: ${reason}`, player: bossId });
+    await this.sendNotification(targetId, { title: '💀 Вигнання', message: `Вас вигнали з мафії. Причина: ${reason}`, type: 'error' });
+    return { success: true };
+  }
+
+  async getMafiaTargets() {
+    try {
+      const res = await this.authFetch('/api/mafia/targets');
+      return res.ok ? await res.json() : [];
+    } catch (e) { return []; }
+  }
+
+  async performMafiaAction(adminId: string, actionType: string, targetId?: string, amount?: number, data?: any) {
+    const admin = await this.getProfile(adminId);
+    if (!admin) return { success: false };
+
+    let message = '';
+    switch(actionType) {
+      case 'laundry_req':
+        message = `Мафія подала запит на легалізацію ₴${amount?.toLocaleString()} брудних гривень.`;
+        break;
+      case 'bribe':
+        message = `Дано хабар посадовій особі у розмірі ₴${amount?.toLocaleString()}`;
+        if (targetId) await this.transferMoney(adminId, targetId, amount || 0);
+        break;
+      case 'hit':
+        message = `Мафія "замовила" гравця. Ціль буде заблокована на 1 цикл.`;
+        break;
+      case 'robbery':
+        message = `Мафія організувала зухвале пограбування банку!`;
+        break;
+      case 'protection':
+        message = `Мафія встановила "кришу" над бізнесом (Данина: ${amount}%).`;
+        break;
+      default:
+        message = `Мафія виконала дію: ${actionType}`;
+    }
+
+    await this.logEvent({ type: 'mafia_action', message, player: adminId });
+    return { success: true, message };
+  }
 }
 
 export const backend = new BackendService();

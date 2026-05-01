@@ -39,11 +39,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
   
   const isGovLeader = isAdmin || 
                       profile?.role === 'rada' ||
-                      ['Президент', "Прем'єр Міністр", "Прем'єр-міністр", 'Міністр фінансів'].includes(profile?.role || '') ||
                       ['Президент', "Прем'єр Міністр", "Прем'єр-міністр", 'Міністр фінансів'].includes(profile?.status || '');
 
   const isInGov = isGovLeader || 
-                  ['Депутат', 'Працівник ВФБ'].includes(profile?.role || '') ||
                   ['Депутат', 'Працівник ВФБ'].includes(profile?.status || '');
 
   useEffect(() => {

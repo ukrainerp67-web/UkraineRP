@@ -31,9 +31,7 @@ export const RadaView: React.FC = () => {
                       ].includes(profile?.status || '');
 
   const isInGov = isGovLeader || 
-                  profile?.role === 'Депутат' || 
-                  profile?.role === 'Працівник ВФБ' ||
-                  profile?.status === 'Депутат' ||
+                  profile?.status === 'Депутат' || 
                   profile?.status === 'Працівник ВФБ';
 
   const [auditResult, setAuditResult] = useState<any>(null);
@@ -373,7 +371,7 @@ export const RadaView: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {(profile?.role === 'Президент' || profile?.status === 'Президент') && (
+            {(profile?.role === 'admin' || profile?.status === 'Президент') && (
               <div className="space-y-4">
                 <button 
                   onClick={handlePresidentVeto}
@@ -508,7 +506,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {(profile?.role === 'Депутат' || profile?.status === 'Депутат') && (
+            {(profile?.role === 'admin' || profile?.status === 'Депутат') && (
               <div className="space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                    <div className="flex items-center gap-2 mb-1">
@@ -569,7 +567,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {(profile?.role === "Прем'єр-міністр" || profile?.role === "Прем'єр Міністр" || profile?.status === "Прем'єр-міністр" || profile?.status === "Прем'єр Міністр") && (
+            {(profile?.role === 'admin' || profile?.status === "Прем'єр-міністр" || profile?.status === "Прем'єр Міністр") && (
               <div className="space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -605,7 +603,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {(profile?.role === 'Міністр фінансів' || profile?.status === 'Міністр фінансів') && (
+            {(profile?.role === 'admin' || profile?.status === 'Міністр фінансів') && (
               <div className="space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 mb-1">

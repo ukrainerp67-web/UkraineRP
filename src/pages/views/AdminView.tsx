@@ -388,6 +388,11 @@ export const AdminView: React.FC = () => {
                       <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg inline-block w-fit tracking-tighter ${user.role === 'admin' ? (user.email === 'ukrainerp67@gmail.com' ? 'bg-ukraine-yellow/20 text-ukraine-yellow border border-ukraine-yellow/30 shadow-[0_0_15px_rgba(255,221,0,0.2)]' : 'bg-ukraine-blue/20 text-ukraine-blue border border-ukraine-blue/30') : 'bg-white/5 text-text-dim border border-white/10'}`}>
                         {user.email === 'ukrainerp67@gmail.com' ? 'HEAD ADMIN' : (user.role || 'GUEST')}
                       </span>
+                      {user.status && user.status !== user.role && (
+                        <span className="text-[8px] font-bold text-text-dim/80 px-2 tracking-tight">
+                          {user.status}
+                        </span>
+                      )}
                       {user.isFrozen && (
                         <div className="px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-md w-fit">
                            <span className="text-[8px] font-black uppercase text-red-500 flex items-center gap-1.5 leading-none">
@@ -595,7 +600,21 @@ export const AdminView: React.FC = () => {
                     <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Глобальна Роль</label>
                     <select 
                       value={selectedUser.role || 'user'}
-                      onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value})}
+                      onChange={(e) => {
+                        const newRole = e.target.value;
+                        let newStatus = selectedUser.status;
+                        // Auto-assign default status for fraction if current status is neutral or empty
+                        const isNeutral = ['citizen', 'Громадянин', 'Бізнесмен', 'user', 'rada', 'bank', 'mafia', 'admin'].includes(selectedUser.status || '') || !selectedUser.status;
+                        
+                        if (isNeutral || newRole === 'user') {
+                           if (newRole === 'rada') newStatus = 'Депутат';
+                           else if (newRole === 'bank') newStatus = 'Головний касир';
+                           else if (newRole === 'mafia') newStatus = 'Бойовик (Силовик)';
+                           else if (newRole === 'admin') newStatus = 'Головний Адмін';
+                           else if (newRole === 'user') newStatus = 'Громадянин';
+                        }
+                        setSelectedUser({...selectedUser, role: newRole, status: newStatus});
+                      }}
                       className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
                     >
                       <option value="user">Гравець</option>

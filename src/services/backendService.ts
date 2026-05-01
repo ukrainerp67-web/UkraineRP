@@ -21,6 +21,7 @@ class BackendService {
   }
 
   private startSession(uid: string) {
+    if (!uid || uid === 'undefined') return;
     this.currentUserUid = uid;
     
     const pollPresence = async () => {
@@ -128,7 +129,7 @@ class BackendService {
 
   async getChatHistory() {
     try {
-      const res = await this.authFetch('/api/messages/history');
+      const res = await this.authFetch('/api/messages');
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) { return []; }

@@ -102,6 +102,11 @@ const authenticateToken = (req: any, res: any, next: any) => {
     
     req.user = user;
     
+    if (!user || !user.uid) {
+      console.warn(`[AUTH] Token verified but UID missing for ${req.path}`);
+      return res.status(401).json({ error: 'Сесія завершена, увійдіть знову' });
+    }
+    
     try {
       const dbUser = await prisma.player.findUnique({ where: { uid: user.uid } });
       
@@ -133,8 +138,9 @@ const authenticateToken = (req: any, res: any, next: any) => {
 
       req.dbUser = dbUser;
       next();
-    } catch (e) {
-      console.error('Auth verification error:', e);
+    } catch (e: any) {
+      const code = e.code ? `[${e.code}] ` : '';
+      console.error(`Auth verification error: ${code}${e.message}`, e);
       // Fallback for transient DB issues
       next();
     }
@@ -257,6 +263,15 @@ async function startServer() {
   app.use(morgan('dev'));
   app.use(express.json({ limit: '10mb' }));
 
+  // Global Error Logger for API
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (req.path.startsWith('/api')) {
+       const code = err.code ? `[${err.code}] ` : '';
+       console.error(`[API ERROR] ${req.method} ${req.path}: ${code}${err.message}`);
+    }
+    next(err);
+  });
+
   // --- Auth Routes (Replacement for Firebase) ---
   app.post('/api/auth/register', async (req, res) => {
     const { email, password, username, firstName, lastName, sex, birthDate, signature } = req.body;
@@ -373,6 +388,8 @@ async function startServer() {
       if (!user) return res.status(404).json({ error: 'User not found' });
       res.json(user);
     } catch (e: any) {
+      const code = e.code ? `[${e.code}] ` : '';
+      console.error(`[PROFILE] Error fetching by email: ${code}${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -402,7 +419,8 @@ async function startServer() {
 
       res.json(combined || []);
     } catch (error: any) {
-      console.error('[ADMIN] Error fetching users:', error.message);
+      const code = error.code ? `[${error.code}] ` : '';
+      console.error(`[ADMIN] Error fetching users: ${code}${error.message}`);
       res.json([]); 
     }
   });
@@ -438,7 +456,8 @@ async function startServer() {
 
       res.json(updatedUser);
     } catch (e: any) {
-      console.error('[ADMIN] Update user error:', e);
+      const code = e.code ? `[${e.code}] ` : '';
+      console.error(`[ADMIN] Update user error: ${code}${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -485,6 +504,8 @@ async function startServer() {
 
       res.json(user);
     } catch (e: any) {
+      const code = e.code ? `[${e.code}] ` : '';
+      console.error(`[PROFILE] Fetch error for ${uid}: ${code}${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -677,38 +698,49 @@ async function startServer() {
   // Notifications
   app.get('/api/users/:uid/notifications', authenticateToken, async (req: any, res) => {
     try {
-      if (req.user.uid !== req.params.uid) return res.status(403).json({ error: 'Auth mismatch' });
+      const { uid } = req.params;
+      if (!uid) return res.status(400).json({ error: 'UID is required' });
+      if (req.user.uid !== uid) return res.status(403).json({ error: 'Auth mismatch' });
+      
       const notifications = await prisma.notification.findMany({
-        where: { userId: req.params.uid },
+        where: { userId: uid },
         orderBy: { id: 'desc' }
       });
       res.json(notifications || []);
     } catch (e: any) {
-      console.error('[NOTIFICATIONS] Error fetching notifications:', e);
+      const code = e.code ? `[${e.code}] ` : '';
+      console.error(`[NOTIFICATIONS] Error fetching notifications: ${code}${e.message}`);
       res.json([]);
     }
   });
 
   app.post('/api/users/:uid/notifications', async (req, res) => {
+    const { uid } = req.params;
+    if (!uid) return res.status(400).json({ error: 'UID is required' });
     const { title, message, type } = req.body;
     try {
       await prisma.notification.create({
-        data: { userId: req.params.uid, title, message, type }
+        data: { userId: uid, title, message, type }
       });
       res.json({ success: true });
     } catch (e: any) {
+      console.error('[NOTIFICATIONS] Error creating notification:', e);
       res.status(500).json({ success: false, error: e.message });
     }
   });
 
-  app.patch('/api/notifications/:id/read', async (req, res) => {
+  app.patch('/api/notifications/:id/read', async (req: any, res: any) => {
     try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid notification ID' });
+      
       await prisma.notification.update({
-        where: { id: parseInt(req.params.id) },
+        where: { id },
         data: { read: true }
       });
       res.json({ success: true });
     } catch (e: any) {
+      console.error('[NOTIFICATIONS] Error updating notification:', e);
       res.status(500).json({ error: e.message });
     }
   });
@@ -723,19 +755,22 @@ async function startServer() {
       });
       res.json((messages || []).reverse());
     } catch (e: any) {
-      console.error('[MESSAGES] Error fetching messages:', e);
+      const code = e.code ? `[${e.code}] ` : '';
+      console.error(`[MESSAGES] Error fetching messages: ${code}${e.message}`);
       res.json([]);
     }
   });
 
   app.post('/api/messages', async (req, res) => {
     const { player, message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message content is required' });
     try {
       await prisma.globalEvent.create({
-        data: { type: 'chat', message, player }
+        data: { type: 'chat', message, player: player || 'Гість' }
       });
       res.json({ success: true });
     } catch (e: any) {
+      console.error('[MESSAGES] Error creating message:', e);
       res.status(500).json({ success: false, error: e.message });
     }
   });
@@ -764,26 +799,33 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users/:uid/fines', authenticateToken, async (req: any, res) => {
+  app.post('/api/users/:uid/fines', authenticateToken, async (req: any, res: any) => {
     // Only officials can issue fines (or admin)
     const isOfficial = req.dbUser && (['admin', 'Президент', 'Депутат', 'Поліція'].includes(req.dbUser.role) || req.dbUser.status === 'Поліція');
     if (!isOfficial) return res.status(403).json({ error: 'Official only' });
     const { amount, reason, deadline } = req.body;
+    const { uid } = req.params;
+    if (!uid) return res.status(400).json({ error: 'UID is required' });
+
     try {
       await prisma.fine.create({
-        data: { userId: req.params.uid, amount, reason, deadline }
+        data: { userId: uid, amount: parseInt(amount) || 0, reason, deadline }
       });
       res.json({ success: true });
     } catch (e: any) {
+      console.error('[FINES] Error creating fine:', e);
       res.status(500).json({ success: false, error: e.message });
     }
   });
 
-  app.patch('/api/fines/:id', authenticateToken, async (req: any, res) => {
+  app.patch('/api/fines/:id', authenticateToken, async (req: any, res: any) => {
     const { status } = req.body;
     try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid fine ID' });
+
       await prisma.fine.update({
-        where: { id: parseInt(req.params.id) },
+        where: { id },
         data: { 
           status, 
           paidAt: status === 'paid' ? new Date() : null 
@@ -791,6 +833,7 @@ async function startServer() {
       });
       res.json({ success: true });
     } catch (e: any) {
+      console.error('[FINES] Error updating fine:', e);
       res.status(500).json({ success: false, error: e.message });
     }
   });

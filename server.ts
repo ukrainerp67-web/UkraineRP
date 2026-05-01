@@ -46,8 +46,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
 const FRACTION_STATUSES = [
   'Головний Адмін',
   'Президент',
-  "Прем'єр Міністр",
-  "Прем'єр міністр",
   "Прем'єр-міністр",
   'Міністр фінансів',
   'Депутат',
@@ -64,6 +62,13 @@ const FRACTION_STATUSES = [
   'Бойовик (Силовик)',
   'Працівник оподаткування'
 ];
+
+let globalGameState = {
+  taxRate: 0.20,
+  stateBudget: 5000000,
+  activeProposals: [] as any[], // Laws/Bills for President
+  maidanActive: false,
+};
 
 function resolveStatus(businesses: any[], currentStatus: string) {
   const hasBusinesses = Array.isArray(businesses) && businesses.length > 0;
@@ -429,6 +434,16 @@ async function startServer() {
         user = await prisma.player.update({
           where: { uid: user.uid },
           data: { role: 'admin', status: 'Головний Адмін', isVerified: true }
+        });
+      }
+
+      // Auto-assign Businessman status if out of sync
+      const currentStatus = user.status;
+      const expectedStatus = resolveStatus((user.businesses as any[]) || [], currentStatus);
+      if (currentStatus !== expectedStatus) {
+        user = await prisma.player.update({
+          where: { uid: user.uid },
+          data: { status: expectedStatus }
         });
       }
 
@@ -839,13 +854,431 @@ async function startServer() {
     }
   });
 
-  // --- Fraction Management Endpoints ---
+  // --- GOVERNANCE & RADA SYSTEM ---
+
+  // Get Global Game State
+  app.get('/api/game-state', async (req, res) => {
+    try {
+      const config = await prisma.systemConfig.findUnique({ where: { id: 'global' } });
+      if (config) {
+        globalGameState.taxRate = config.taxRate;
+        globalGameState.stateBudget = config.budget;
+      }
+      res.json({
+        ...globalGameState,
+        taxRate: globalGameState.taxRate,
+        stateBudget: globalGameState.stateBudget,
+        maidanActive: globalGameState.maidanActive
+      });
+    } catch (e: any) {
+      res.json(globalGameState);
+    }
+  });
+
+  // Get All Players for Management
+  app.get('/api/players/all', authenticateToken, async (req: any, res) => {
+    try {
+      const players = await prisma.player.findMany({
+        orderBy: { lastLogin: 'desc' }
+      });
+      res.json(players);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Toggle Maidan (Manual)
+  app.post('/api/rada/maidan', authenticateToken, async (req: any, res) => {
+    const isGov = req.dbUser?.role === 'rada' || 
+                  ['Президент', 'Депутат', 'Прем\'єр-міністр'].includes(req.dbUser?.status || '') || 
+                  req.dbUser?.role === 'admin';
+    if (!isGov) return res.status(403).json({ error: 'Доступ заборонено' });
+    
+    globalGameState.maidanActive = !globalGameState.maidanActive;
+    await prisma.globalEvent.create({
+      data: {
+        type: 'rada',
+        message: globalGameState.maidanActive ? '⚠️ В КРАЇНІ ОГОЛОШЕНО МАЙДАН!' : '✅ Ситуація в країні стабілізована.',
+        player: req.dbUser.firstName
+      }
+    });
+    res.json({ success: true, active: globalGameState.maidanActive });
+  });
+
+  // Propose Bill
+  app.post('/api/rada/propose', authenticateToken, async (req: any, res) => {
+    const { title, description } = req.body;
+    if (req.dbUser?.status !== 'Депутат' && req.dbUser?.role !== 'admin') {
+      return res.status(403).json({ error: 'Тільки депутати можуть подавати законопроєкти' });
+    }
+    const proposal = {
+      id: Math.random().toString(36).substr(2, 9),
+      title,
+      description,
+      proposer: `${req.dbUser.firstName} ${req.dbUser.lastName}`,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    globalGameState.activeProposals.push(proposal);
+    res.json({ success: true, proposal });
+  });
+
+  // Manage Proposal
+  app.post('/api/rada/manage-proposal', authenticateToken, async (req: any, res) => {
+    const { proposalId, action } = req.body;
+    if (req.dbUser?.status !== 'Президент' && req.dbUser?.role !== 'admin') {
+      return res.status(403).json({ error: 'Тільки Президент має право підпису' });
+    }
+    const idx = globalGameState.activeProposals.findIndex(p => p.id === proposalId);
+    if (idx === -1) return res.status(404).json({ error: 'Запит не знайдено' });
+
+    if (action === 'approve') {
+       globalGameState.activeProposals[idx].status = 'approved';
+       await prisma.globalEvent.create({
+         data: {
+           type: 'rada',
+           message: `[УКАЗ] Президент підписав закон: ${globalGameState.activeProposals[idx].title}`,
+           player: 'Президент'
+         }
+       });
+    } else {
+       globalGameState.activeProposals.splice(idx, 1);
+    }
+    res.json({ success: true });
+  });
+
+  // Set Tax Rate
+  app.post('/api/rada/tax', authenticateToken, async (req: any, res) => {
+    const { rate } = req.body;
+    if (req.dbUser?.status !== 'Міністр фінансів' && req.dbUser?.role !== 'admin') {
+      return res.status(403).json({ error: 'Доступ лише для Міністра Фінансів' });
+    }
+    const decimalRate = rate > 1 ? rate / 100 : rate;
+    globalGameState.taxRate = decimalRate;
+    await prisma.systemConfig.upsert({
+      where: { id: 'global' },
+      update: { taxRate: decimalRate },
+      create: { id: 'global', taxRate: decimalRate, budget: globalGameState.stateBudget }
+    });
+    await prisma.globalEvent.create({
+      data: {
+        type: 'rada',
+        message: `[ПОДАТКИ] Нова ставка: ${(decimalRate * 100).toFixed(0)}%`,
+        player: 'МінФін'
+      }
+    });
+    res.json({ success: true, rate: decimalRate });
+  });
+
+  // Confiscate Business
+  app.post('/api/rada/confiscate', authenticateToken, async (req: any, res) => {
+    const { targetUid, businessId, reason } = req.body;
+    const isVFB = req.dbUser?.status === 'Працівник ВФБ' || req.dbUser?.status === 'Міністр фінансів' || req.dbUser?.role === 'admin';
+    if (!isVFB) return res.status(403).json({ error: 'Доступ заборонено' });
+
+    try {
+      const target = await prisma.player.findUnique({ where: { uid: targetUid } });
+      if (!target) return res.status(404).json({ error: 'Гравець не знайдений' });
+
+      let businesses = (target.businesses as any[]) || [];
+      const business = businesses.find(b => b.businessId === businessId);
+      if (!business) return res.status(404).json({ error: 'Бізнес не знайдений' });
+
+      const updatedBusinesses = businesses.filter(b => b.businessId !== businessId);
+      const newStatus = resolveStatus(updatedBusinesses, target.status);
+
+      await prisma.player.update({
+        where: { uid: targetUid },
+        data: { 
+          businesses: updatedBusinesses,
+          status: newStatus
+        }
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: targetUid,
+          title: '⚠️ КОНФІСКАЦІЯ МАЙНА',
+          message: `Ваш бізнес "${business.name || businessId}" конфісковано! Причина: ${reason}`,
+          type: 'alert'
+        }
+      });
+
+      await prisma.globalEvent.create({
+        data: {
+          type: 'rada',
+          message: `[ВФБ] Конфісковано бізнес у ${target.firstName} ${target.lastName}. Причина: ${reason}`,
+          player: req.dbUser.firstName
+        }
+      });
+
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Block/Unblock Business
+  app.post('/api/rada/block-business', authenticateToken, async (req: any, res) => {
+    const { targetUid, businessId, block } = req.body;
+    const isOfficial = req.dbUser?.status === 'Працівник ВФБ' || req.dbUser?.status === 'Міністр фінансів' || req.dbUser?.role === 'admin';
+    if (!isOfficial) return res.status(403).json({ error: 'Доступ заборонено' });
+
+    try {
+      const target = await prisma.player.findUnique({ where: { uid: targetUid } });
+      if (!target) return res.status(404).json({ error: 'Гравець не знайдений' });
+
+      let businesses = (target.businesses as any[]) || [];
+      const bizIdx = businesses.findIndex(b => b.businessId === businessId);
+      if (bizIdx === -1) return res.status(404).json({ error: 'Бізнес не знайдений' });
+
+      businesses[bizIdx].isBlocked = block;
+
+      await prisma.player.update({
+        where: { uid: targetUid },
+        data: { businesses }
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: targetUid,
+          title: block ? '🚫 БІЗНЕС ЗАБЛОКОВАНО' : '✅ БІЗНЕС РОЗБЛОКОВАНО',
+          message: block ? `Ваш бізнес "${businesses[bizIdx].name || businessId}" тимчасово заблоковано державою.` : `Ваш бізнес "${businesses[bizIdx].name || businessId}" розблоковано. Ви можете знову збирати прибуток.`,
+          type: block ? 'alert' : 'success'
+        }
+      });
+
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // RADA: Apply Bonus or Fine
+  app.post('/api/rada/action', authenticateToken, async (req: any, res) => {
+    const { actionType, targetId, amount, reason } = req.body;
+    const isMinFin = req.dbUser?.status === 'Міністр фінансів' || req.dbUser?.role === 'admin' || req.dbUser?.status === 'Президент';
+    if (!isMinFin) return res.status(403).json({ error: 'Немає повноважень' });
+
+    try {
+      if (actionType === 'bonus') {
+        const target = await prisma.player.findUnique({ where: { uid: targetId } });
+        if (!target) return res.status(404).json({ error: 'Ціль не знайдена' });
+
+        await prisma.player.update({
+          where: { uid: targetId },
+          data: { balance: { increment: amount } }
+        });
+
+        await prisma.systemConfig.update({
+          where: { id: 'global' },
+          data: { budget: { decrement: amount } }
+        });
+
+        await prisma.notification.create({
+          data: {
+            userId: targetId,
+            title: '💰 ПРЕМІЯ ВІД УРЯДУ',
+            message: `Вам нараховано ₴${amount.toLocaleString()}! Причина: ${reason}`,
+            type: 'success'
+          }
+        });
+      } else if (actionType === 'fine') {
+        await prisma.fine.create({
+          data: {
+            userId: targetId,
+            amount,
+            reason: reason,
+            deadline: new Date(Date.now() + 24 * 3600000).toISOString()
+          }
+        });
+        
+        await prisma.notification.create({
+          data: {
+            userId: targetId,
+            title: '⚖️ ШТРАФ ВІД УРЯДУ',
+            message: `Вам виписано штраф ₴${amount.toLocaleString()}! Причина: ${reason}`,
+            type: 'error'
+          }
+        });
+      }
+
+      await prisma.globalEvent.create({
+        data: {
+          type: 'rada',
+          message: `[УРЯД] Дія ${actionType} для ${targetId}. Сума: ₴${amount}. ${reason}`,
+          player: req.dbUser.firstName
+        }
+      });
+
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // RADA: Sync State (For common values like tax rate and budget)
+  app.get('/api/game-state', async (req, res) => {
+    try {
+      const config = await prisma.systemConfig.findUnique({ where: { id: 'global' } });
+      if (config) {
+        globalGameState.taxRate = config.taxRate;
+        globalGameState.stateBudget = config.budget;
+      }
+      res.json({
+        ...globalGameState,
+        taxRate: globalGameState.taxRate,
+        stateBudget: globalGameState.stateBudget
+      });
+    } catch (e: any) {
+      res.json(globalGameState);
+    }
+  });
+
+  // RADA: Fetch Players for Fraction Work
+  app.get('/api/players/all', authenticateToken, async (req: any, res) => {
+     try {
+       const users = await prisma.player.findMany({
+         select: {
+           uid: true,
+           firstName: true,
+           lastName: true,
+           status: true,
+           socialRating: true,
+           balance: true,
+           businesses: true
+         }
+       });
+       res.json(users);
+     } catch (e: any) {
+       res.status(500).json({ error: e.message });
+     }
+  });
+
+  // Business: Collect Profit (The Logic Hub for Taxes and Crime)
+  app.post('/api/business/collect', authenticateToken, async (req: any, res) => {
+    const { businessId, amount, payTax } = req.body;
+    try {
+      const user = await prisma.player.findUnique({ where: { uid: req.user.uid } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      let businesses = (user.businesses as any[]) || [];
+      const bizIdx = businesses.findIndex(b => b.businessId === businessId);
+      if (bizIdx === -1) return res.status(404).json({ error: 'Business not found' });
+
+      // Refresh in-memory tax rate from DB/Global
+      const taxRate = globalGameState.taxRate;
+      const taxAmount = payTax ? Math.floor(amount * taxRate) : 0;
+      const netProfit = amount - taxAmount;
+
+      // Update Business State
+      businesses[bizIdx].lastProfitAt = new Date().toISOString();
+      businesses[bizIdx].isStocked = false; // Stock consumed
+      
+      if (!payTax) {
+        businesses[bizIdx].taxEvasionCount = (businesses[bizIdx].taxEvasionCount || 0) + 1;
+      } else {
+        businesses[bizIdx].taxEvasionCount = 0; 
+      }
+
+      // Update Global Budget (Online sync)
+      if (payTax && taxAmount > 0) {
+        globalGameState.stateBudget += taxAmount;
+        await prisma.systemConfig.update({
+          where: { id: 'global' },
+          data: { budget: { increment: taxAmount } }
+        });
+      }
+
+      const updatedRating = payTax ? user.socialRating + 5 : user.socialRating - 25;
+
+      await prisma.player.update({
+        where: { uid: req.user.uid },
+        data: {
+          balance: { increment: netProfit },
+          socialRating: updatedRating,
+          businesses: businesses
+        }
+      });
+
+      // Mafia Alert if many evasions
+      if (businesses[bizIdx].taxEvasionCount >= 5) {
+         await prisma.globalEvent.create({
+           data: {
+             type: 'mafia',
+             message: `[ТІНЬ] Бізнес "${businesses[bizIdx].name}" (Власник: ${user.firstName}) приховує прибуток. Сім'я зверне на це увагу.`,
+             player: 'Shadow'
+           }
+         });
+      }
+
+      res.json({ success: true, netProfit, taxPaid: taxAmount, newRating: updatedRating });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Business: Buy Mafia Protection (The Roof)
+  app.post('/api/business/protect', authenticateToken, async (req: any, res) => {
+    const { businessId } = req.body;
+    try {
+      const user = await prisma.player.findUnique({ where: { uid: req.user.uid } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      let businesses = (user.businesses as any[]) || [];
+      const bizIdx = businesses.findIndex(b => b.businessId === businessId);
+      if (bizIdx === -1) return res.status(404).json({ error: 'Business not found' });
+
+      const protectionCost = 50000; // Flat fee for protection
+      if (user.balance < protectionCost) return res.status(400).json({ error: 'Недостатньо коштів' });
+
+      businesses[bizIdx].hasMafiaProtection = true;
+      businesses[bizIdx].protectionLevel = 1;
+
+      // Update Player
+      await prisma.player.update({
+        where: { uid: req.user.uid },
+        data: {
+          balance: { decrement: protectionCost },
+          businesses: businesses
+        }
+      });
+
+      // Notify Mafia Family & Send Percentage
+      const mafiaBoss = await prisma.player.findFirst({
+        where: { OR: [{ status: 'Дон (Бос мафії)' }, { role: 'mafia' }] },
+        orderBy: { socialRating: 'asc' }
+      });
+
+      if (mafiaBoss) {
+        const share = Math.floor(protectionCost * 0.5); // 50% goes to family
+        await prisma.player.update({
+          where: { uid: mafiaBoss.uid },
+          data: { balance: { increment: share } }
+        });
+
+        await prisma.notification.create({
+          data: {
+            userId: mafiaBoss.uid,
+            title: '💼 НОВИЙ ПІДПІЛЬНИЙ КОНТРАКТ',
+            message: `Бізнес "${businesses[bizIdx].name}" (Власник: ${user.firstName}) купив кришу. До сімейної каси надійшло ₴${share.toLocaleString()}.`,
+            type: 'mafia'
+          }
+        });
+      }
+
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // RADA: Shadow Audit
   app.post('/api/rada/audit', authenticateToken, async (req: any, res) => {
     const { targetUid } = req.body;
-    if (!req.dbUser || (req.dbUser.status !== 'Працівник ВФБ' && req.dbUser.role !== 'admin')) {
-      return res.status(403).json({ error: 'Доступ лише для працівників ВФБ' });
+    const isVFB = req.dbUser?.status === 'Працівник ВФБ' || req.dbUser?.status === 'Міністр фінансів' || req.dbUser?.role === 'admin';
+    if (!isVFB) {
+      return res.status(403).json({ error: 'Доступ лише для працівників ВФБ та Міністра Фінансів' });
     }
     try {
       const target = await prisma.player.findUnique({ where: { uid: targetUid } });
@@ -856,7 +1289,11 @@ async function startServer() {
         businessId: b.businessId,
         name: b.name || b.businessId,
         evasions: b.taxEvasionCount || b.evasions || 0,
-        isBlocked: b.isBlocked || false
+        isBlocked: b.isBlocked || false,
+        lastProfitAt: b.lastProfitAt,
+        lastOpexAt: b.lastOpexAt,
+        lastStockAt: b.stockPurchasedAt,
+        purchasedAt: b.purchasedAt
       }));
 
       res.json({ success: true, targetName: `${target.firstName} ${target.lastName}`, auditData });
@@ -954,13 +1391,13 @@ async function startServer() {
       users.forEach(u => {
         const bz = (u.businesses as any[]) || [];
         bz.forEach(b => {
-          if ((b.evasionCount || 0) >= 1) {
+          if ((b.taxEvasionCount || 0) >= 5) {
             targets.push({
               id: b.businessId || b.name,
               name: b.name || b.businessId,
               ownerName: `${u.firstName} ${u.lastName}`,
               ownerUid: u.uid,
-              evasions: b.evasionCount || 0
+              evasions: b.taxEvasionCount || 0
             });
           }
         });
@@ -1000,56 +1437,6 @@ async function startServer() {
     }
   });
 
-  // RADA: Confiscate Business
-  app.post('/api/rada/confiscate', authenticateToken, async (req: any, res) => {
-    const { targetUid, businessId, reason } = req.body;
-    const isVFB = req.dbUser?.status === 'Працівник ВФБ' || req.dbUser?.role === 'admin';
-    if (!isVFB) return res.status(403).json({ error: 'Доступ лише для працівників ВФБ' });
-
-    try {
-      const target = await prisma.player.findUnique({ where: { uid: targetUid } });
-      if (!target) return res.status(404).json({ error: 'Ціль не знайдена' });
-
-      let businesses = (target.businesses as any[]) || [];
-      const businessExists = businesses.some(b => b.businessId === businessId);
-      if (!businessExists) return res.status(404).json({ error: 'Бізнес не знайдено' });
-
-      // Remove the business
-      const updatedBusinesses = businesses.filter(b => b.businessId !== businessId);
-      
-      // Resolve new status if it was the last business
-      const newStatus = resolveStatus(updatedBusinesses, target.status || 'Громадянин');
-
-      await prisma.player.update({
-        where: { uid: targetUid },
-        data: { 
-          businesses: updatedBusinesses,
-          status: newStatus
-        }
-      });
-
-      await prisma.notification.create({
-        data: {
-          userId: targetUid,
-          title: 'БІЗНЕС КОНФІСКОВАНО!',
-          message: `Держава конфіскувала ваш бізнес "${businessId}". Причина: ${reason || 'Порушення податкового законодавства'}`,
-          type: 'alert'
-        }
-      });
-
-      await prisma.globalEvent.create({
-        data: {
-          type: 'rada',
-          message: `[ВФБ] Конфісковано бізнес у ${target.firstName} ${target.lastName}. Причина: ${reason || 'Податкова перевірка'}`,
-          player: req.dbUser.firstName
-        }
-      });
-
-      res.json({ success: true, newStatus });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
 
   app.post('/api/presence/:uid', authenticateToken, async (req: any, res) => {
     try {

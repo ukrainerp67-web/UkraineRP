@@ -84,7 +84,7 @@ class BackendService {
     // This will be called by components if they subscribe
   }
 
-  private async authFetch(url: string, options: RequestInit = {}) {
+  public async authFetch(url: string, options: RequestInit = {}) {
     const token = this.getToken();
     const headers = new Headers(options.headers || {});
     if (token) {
@@ -93,7 +93,6 @@ class BackendService {
     const res = await fetch(url, { ...options, headers });
     
     if (res.status === 401) {
-      // Avoid redirect if we are already on registration or if the token is already gone
       const token = this.getToken();
       if (token && window.location.pathname !== '/' && !window.location.pathname.includes('register')) {
         console.warn('Auth token invalid or expired. Logging out.');
@@ -123,10 +122,16 @@ class BackendService {
 
   private async syncNotifications(uid: string) {
     try {
-      const res = await this.authFetch(`/api/users/${uid}/notifications`);
-      const notifications = await res.json();
-      // Internal event for UI if needed, for simplicity we rely on manual fetch in Notifications component
+      await this.authFetch(`/api/users/${uid}/notifications`);
     } catch (e) {}
+  }
+
+  async getChatHistory() {
+    try {
+      const res = await this.authFetch('/api/messages/history');
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) { return []; }
   }
 
   private async syncMessages() {
@@ -199,14 +204,6 @@ class BackendService {
     } catch (e) { return null; }
   }
 
-  async getProfileByEmail(email: string) {
-    if (!email) return null;
-    try {
-      const res = await fetch(`/api/profile/email/${encodeURIComponent(email)}`);
-      return res.ok ? await res.json() : null;
-    } catch (e) { return null; }
-  }
-
   async deleteProfile(uid: string) {
     try {
       const res = await this.authFetch(`/api/profile/${uid}`, { method: 'DELETE' });
@@ -239,10 +236,10 @@ class BackendService {
   // Global State
   async getGlobalState() {
     try {
-      const res = await fetch('/api/system/global');
+      const res = await this.authFetch('/api/game-state');
       const state = await res.json();
-      return state || { budget: 1000000, taxRate: 0.20, trustRating: 60 };
-    } catch (e) { return { budget: 1000000, taxRate: 0.20, trustRating: 60 }; }
+      return state || { budget: 5000000, taxRate: 0.20, trustRating: 60 };
+    } catch (e) { return { budget: 5000000, taxRate: 0.20, trustRating: 60 }; }
   }
 
   onGlobalStateUpdate(callback: (state: any) => void) {
@@ -253,7 +250,7 @@ class BackendService {
       } catch (e) {}
     };
     if (this.globalInterval) clearInterval(this.globalInterval);
-    this.globalInterval = setInterval(update, 5000);
+    this.globalInterval = setInterval(update, 3000);
     update();
     return () => clearInterval(this.globalInterval);
   }
@@ -272,6 +269,9 @@ class BackendService {
 
   async updateGlobalState(updates: any) {
     try {
+      if (updates.taxRate !== undefined) {
+         return this.setTaxRate(updates.taxRate);
+      }
       const res = await this.authFetch('/api/system/global', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -306,114 +306,322 @@ class BackendService {
     return () => clearInterval(this.eventsInterval);
   }
 
-  // Game Actions
-  async applyVeto(adminId: string, action: string) {
-    await this.logEvent({ type: 'veto', message: `Президент застосував ВЕТО до дії: "${action}"`, player: adminId });
-    return { success: true };
+  // --- Rada & Economy ---
+  async proposeBill(title: string, description: string, type: string) {
+    try {
+      const res = await this.authFetch('/api/rada/propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, type })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
-  async setTaxRate(adminId: string, newRate: number) {
-    if (newRate < 0 || newRate > 0.5) return { success: false, message: 'Податок має бути від 0% до 50%' };
-    await this.updateGlobalState({ taxRate: newRate });
-    await this.logEvent({ type: 'tax_change', message: `Міністр фінансів встановив новий податок: ${(newRate * 100).toFixed(0)}%`, player: adminId });
-    return { success: true };
+  async setTaxRate(rate: number) {
+    try {
+      const res = await this.authFetch('/api/rada/tax', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rate })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
-  async businessRaid(adminId: string) {
-    const amount = Math.floor(Math.random() * 40000) + 10000;
-    await this.updateGlobalState({ budget: amount, trustRating: -10 });
-    await this.logEvent({ type: 'raid', message: `Податкова провела рейд на бізнес! До бюджету зараховано ₴${amount.toLocaleString()}.`, player: adminId });
-    return { success: true, amount };
+  async manageProposal(proposalId: string, action: 'approve' | 'reject') {
+    try {
+      const res = await this.authFetch('/api/rada/manage-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposalId, action })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
-  async addressThePeople(adminId: string, speech: string) {
-    const trustChange = Math.floor(Math.random() * 15) + 5;
-    await this.updateGlobalState({ trustRating: trustChange });
-    await this.logEvent({ type: 'president_speech', message: `Президент звернувся до народу. Рейтинг довіри зріс на ${trustChange}%!`, player: adminId });
-    return { success: true, trustChange };
+  async applyVeto(_adminId: any, proposalId: string) {
+    try {
+      const res = await this.authFetch(`/api/rada/proposals/${proposalId}/veto`, { method: 'POST' });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
   }
 
-  async fundSphere(adminId: string, sphere: string, amount: number) {
-    const result = await this.removeFromBudget(amount);
-    if (!result.success) return result;
-    const trustChange = Math.floor(amount / 50000);
-    await this.updateGlobalState({ trustRating: trustChange });
-    await this.logEvent({ type: 'funding', message: `Виділено ₴${amount.toLocaleString()} на сферу: ${sphere}.`, player: adminId });
-    return { success: true };
+  async addressThePeople(_adminId: any, message: string) {
+    try {
+      const res = await this.authFetch('/api/rada/address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async businessRaid(_adminId?: any) {
+    try {
+      const res = await this.authFetch('/api/rada/raid', { method: 'POST' });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async fundSphere(_adminId: any, sphereId: string, amount: number) {
+    try {
+      const res = await this.authFetch('/api/rada/fund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sphereId, amount })
+      });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async toggleMaidan(uid?: any) {
+    try {
+      const res = await this.authFetch('/api/rada/maidan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
   async sendNotification(uid: string, notification: { title: string, message: string, type: string }) {
     try {
-      await fetch(`/api/users/${uid}/notifications`, {
+      const res = await this.authFetch(`/api/users/${uid}/notifications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(notification)
       });
-    } catch (e) {}
+      return await res.json();
+    } catch (e) { return { success: false }; }
+  }
+
+  async adminUpdateUser(targetUid: string, updates: any, _adminName?: string) {
+    try {
+      const res = await this.authFetch(`/api/admin/users/${targetUid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async adminMuteUser(targetUid: string, durationMinutes: number, reason: string, _adminName?: string) {
+    try {
+      const res = await this.authFetch(`/api/admin/users/${targetUid}/mute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durationMinutes, reason })
+      });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async adminFreezeUser(targetUid: string, durationDays: number, reason: string, _adminName?: string) {
+    try {
+      const res = await this.authFetch(`/api/admin/users/${targetUid}/freeze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason, durationDays })
+      });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async adminUnfreezeUser(targetUid: string, _adminName?: string) {
+    try {
+      const res = await this.authFetch(`/api/admin/users/${targetUid}/unfreeze`, { method: 'POST' });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async adminDeleteUser(targetUid: string) {
+    try {
+      const res = await this.authFetch(`/api/admin/users/${targetUid}`, { method: 'DELETE' });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
+  }
+
+  async getProfileByEmail(email: string) {
+    try {
+      const res = await this.authFetch(`/api/users/by-email?email=${encodeURIComponent(email)}`);
+      return res.ok ? await res.json() : null;
+    } catch (e) { return null; }
+  }
+
+  async getAllPlayersForFraction() {
+    try {
+      const res = await this.authFetch('/api/players/all');
+      return await res.json();
+    } catch (e: any) { return []; }
+  }
+
+  async fireEmployee(adminId: string, targetId: string, reason: string) {
+    try {
+      const res = await this.authFetch('/api/rada/fire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId, reason })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async confiscateBusiness(adminId: string, targetUid: string, businessId: string, reason: string) {
+    try {
+      const res = await this.authFetch('/api/rada/confiscate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid, businessId, reason })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async shadowAudit(adminId: string, targetId: string) {
+    try {
+      const res = await this.authFetch('/api/rada/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async toggleBusinessBlock(adminId: string, targetUid: string, businessId: string, block: boolean) {
+    try {
+      const res = await this.authFetch('/api/rada/block-business', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid, businessId, block })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
   async applyBonusOrPenalty(adminId: string, targetId: string, amount: number, reason: string) {
     try {
-      const target = await this.getProfile(targetId);
-      if (!target) return { success: false, message: 'Ціль не знайдена' };
-
-      if (amount > 0) {
-        const budgetResult = await this.removeFromBudget(amount);
-        if (!budgetResult.success) return budgetResult;
-      }
-
-      const bankCards = [...(target.bankCards || [])];
-      let cardIdx = bankCards.findIndex((c: any) => c.type === 'standard' || c.type === 'universal');
-      if (cardIdx === -1) {
-        await this.patchProfile(targetId, { balance: (target.balance || 0) + amount });
-      } else {
-        bankCards[cardIdx].balance += amount;
-        await this.patchProfile(targetId, { bankCards });
-      }
-
-      await this.sendNotification(targetId, {
-        title: amount >= 0 ? '💰 Премія' : '💳 Фінансова санкція',
-        message: `Вам призначено суму ₴${Math.abs(amount).toLocaleString()}. Причина: ${reason}`,
-        type: amount >= 0 ? 'success' : 'error'
+      const res = await this.authFetch('/api/rada/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          actionType: amount >= 0 ? 'bonus' : 'fine', 
+          targetId, 
+          amount: Math.abs(amount), 
+          reason 
+        })
       });
-      return { success: true };
-    } catch (e) { return { success: false, error: e }; }
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
   async issueFine(adminId: string, targetId: string, amount: number, reason: string, deadlineHours: number) {
-    const deadline = new Date(Date.now() + deadlineHours * 3600000);
-    await fetch(`/api/users/${targetId}/fines`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, reason, deadline: deadline.toISOString() })
-    });
-    await this.sendNotification(targetId, { title: '⚖️ Новий Штраф', message: `До оплати: ₴${amount.toLocaleString()}. Причина: ${reason}. Термін: ${deadlineHours} год.`, type: 'error' });
-    return { success: true };
+    try {
+      const res = await this.authFetch('/api/rada/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          actionType: 'fine', 
+          targetId, 
+          amount, 
+          reason 
+        })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  // --- Bank Commands ---
+  async performBankAction(adminId: string, actionType: string, targetId?: string, amount?: number, data?: any) {
+    try {
+      const res = await this.authFetch('/api/bank/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionType, targetId, amount, reason: data?.reason })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
   async getFines(userId: string) {
     try {
-      const res = await fetch(`/api/users/${userId}/fines`);
+      const res = await this.authFetch(`/api/users/${userId}/fines`);
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) { return []; }
   }
 
   async payFine(userId: string, fineId: string, amount: number, cardId: string) {
-    const profile = await this.getProfile(userId);
-    if (!profile) return { success: false };
-    
-    const bankCards = [...(profile.bankCards || [])];
-    const cardIdx = bankCards.findIndex((c: any) => c.number === cardId);
-    if (cardIdx === -1 || bankCards[cardIdx].balance < amount) {
-      return { success: false, message: 'Недостатньо коштів на картці' };
+    try {
+      const res = await this.authFetch(`/api/fines/${fineId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, amount, cardId })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
     }
+  }
 
-    bankCards[cardIdx].balance -= amount;
-    await this.patchProfile(userId, { bankCards });
-    await fetch(`/api/fines/${fineId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paid' }) });
-    await this.addToBudget(amount);
-    return { success: true };
+  // --- Mafia Commands ---
+  async fireMafiaMember(bossId: string, targetId: string, reason: string) {
+    try {
+      const res = await this.authFetch('/api/mafia/fire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId, reason })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async getMafiaTargets() {
+    try {
+      const res = await this.authFetch('/api/mafia/targets');
+      return res.ok ? await res.json() : [];
+    } catch (e: any) { return []; }
+  }
+
+  async performMafiaAction(adminId: string, actionType: string, targetId?: string, amount?: number, data?: any) {
+    try {
+      const res = await this.authFetch('/api/mafia/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionType, targetId, amount, data })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 
   async transferMoney(fromId: string, toId: string, amount: number) {
@@ -424,69 +632,32 @@ class BackendService {
         body: JSON.stringify({ fromId, toId, amount })
       });
       return await res.json();
-    } catch (e) { return { success: false, error: e }; }
+    } catch (e: any) { return { success: false, error: e.message }; }
   }
 
   async triggerPayDay(userId: string) {
     try {
-      const profile = await this.getProfile(userId);
-      if (!profile) return { success: false };
-      
-      const role = profile.role || 'Громадянин';
-      const status = profile.status || 'Громадянин';
-
-      // Rules define specific salaries and taxes for fractions
-      let gross = 0;
-      let taxRate = 0;
-
-      // Rada Fraction
-      if (status === 'Президент') { gross = 10000; taxRate = 0.20; }
-      else if (status === "Прем'єр-міністр" || status === "Прем'єр Міністр") { gross = 8500; taxRate = 0.20; }
-      else if (status === 'Міністр фінансів') { gross = 7000; taxRate = 0.20; }
-      else if (status === 'Депутат') { gross = 5000; taxRate = 0.20; }
-      else if (status === 'Працівник ВФБ') { gross = 4000; taxRate = 0.20; }
-      
-      // Bank Fraction (Progressive PII)
-      else if (status === 'Голова Банку') { gross = 12000; taxRate = 0.25; }
-      else if (status === 'Директор кредитного відділу') { gross = 9000; taxRate = 0.20; }
-      else if (status === 'Керівник фінмоніторингу') { gross = 7500; taxRate = 0.18; }
-      else if (status === 'Головний касир') { gross = 5000; taxRate = 0.15; }
-      else if (status === 'Колектор банку') { gross = 3500; taxRate = 0.10; }
-      
-      // Others
-      else { gross = 2000; taxRate = 0.20; } // Default citizenship salary
-
-      const taxAmount = Math.floor(gross * taxRate);
-      const net = gross - taxAmount;
-
-      const bankCards = [...(profile.bankCards || [])];
-      if (bankCards.length > 0) {
-        bankCards[0].balance += net;
-        await this.patchProfile(userId, { bankCards, lastPayDay: new Date().toISOString() });
-        await this.addToBudget(taxAmount);
-        await this.sendNotification(userId, { title: '💰 PayDay', message: `Зарплата: ₴${net.toLocaleString()}. ПДФО: ₴${taxAmount.toLocaleString()}`, type: 'success' });
-        return { success: true };
-      }
-      return { success: false, message: 'Немає карти для зарахування' };
-    } catch (e) { return { success: false }; }
+      const res = await this.authFetch(`/api/players/${userId}/payday`, { method: 'POST' });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
   }
 
   async searchUsers(queryStr: string) {
     try {
       const res = await fetch(`/api/users/search?q=${encodeURIComponent(queryStr)}`);
       return res.ok ? await res.json() : [];
-    } catch (e) {
-      console.error('searchUsers error:', e);
-      return [];
-    }
+    } catch (e: any) { return []; }
   }
 
   async auditUser(adminId: string, targetId: string) {
-    const target = await this.getProfile(targetId);
-    if (!target) return { success: false };
-    const totalAssets = (target.balance || 0) + (target.bankCards || []).reduce((acc: number, c: any) => acc + (c.balance || 0), 0);
-    await this.logEvent({ type: 'audit', message: `Проведено аудит гравця ${target.firstName} ${target.lastName}. Виявлено капітал: ₴${totalAssets.toLocaleString()}`, player: adminId });
-    return { success: true, totalAssets };
+    try {
+      const res = await this.authFetch(`/api/rada/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId })
+      });
+      return await res.json();
+    } catch (e: any) { return { success: false, error: e.message }; }
   }
 
   async distributeSocialSupport(amount: number, type: 'support' | 'pension') {
@@ -497,7 +668,7 @@ class BackendService {
         body: JSON.stringify({ amount, type })
       });
       return await res.json();
-    } catch (e) { return { success: false, error: e }; }
+    } catch (e: any) { return { success: false, error: e.message }; }
   }
 
   onFinesUpdate(userId: string, callback: (fines: any[]) => void) {
@@ -520,75 +691,6 @@ class BackendService {
     } catch (e) {}
   }
 
-  disconnect() {
-    if (this.presenceInterval) clearInterval(this.presenceInterval);
-    if (this.eventsInterval) clearInterval(this.eventsInterval);
-    if (this.globalInterval) clearInterval(this.globalInterval);
-    if (this.notificationsInterval) clearInterval(this.notificationsInterval);
-    if (this.messagesInterval) clearInterval(this.messagesInterval);
-    this.presenceInterval = null;
-    this.eventsInterval = null;
-    this.globalInterval = null;
-    this.notificationsInterval = null;
-    this.messagesInterval = null;
-  }
-
-  async getChatHistory() {
-    try {
-      const res = await fetch('/api/messages');
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e) { return []; }
-  }
-
-  async adminUpdateUser(targetId: string, updates: any, adminName?: string) {
-    if (adminName) {
-      await this.logEvent({ type: 'admin_edit', message: `Адміністратор ${adminName} оновив дані користувачаID: ${targetId}`, player: adminName });
-    }
-    return this.patchProfile(targetId, updates);
-  }
-
-  async adminMuteUser(targetId: string, durationMinutes: number, reason: string, adminName: string) {
-    const muteUntil = new Date(Date.now() + durationMinutes * 60000).toISOString();
-    await this.logEvent({ type: 'mute', message: `Адміністратор ${adminName} видав мут гравцеві ID: ${targetId} на ${durationMinutes}хв. Причина: ${reason}`, player: adminName });
-    return this.patchProfile(targetId, { muteUntil });
-  }
-
-  async adminFreezeUser(targetId: string, durationMinutes: number, reason: string, adminName: string) {
-    const freezeUntil = durationMinutes === -1 ? '9999-12-31T23:59:59.999Z' : new Date(Date.now() + durationMinutes * 60000).toISOString();
-    await this.logEvent({ type: 'freeze', message: `Адміністратор ${adminName} заморозив гравця ID: ${targetId}. Причина: ${reason}`, player: adminName });
-    return this.patchProfile(targetId, { isFrozen: true, freezeReason: reason, freezeUntil });
-  }
-
-  async adminUnfreezeUser(targetId: string, adminName: string) {
-    await this.logEvent({ type: 'unfreeze', message: `Адміністратор ${adminName} розморозив гравця ID: ${targetId}`, player: adminName });
-    return this.patchProfile(targetId, { isFrozen: false, freezeReason: null, freezeUntil: null });
-  }
-
-  async adminDeleteUser(targetId: string) {
-    return this.deleteProfile(targetId);
-  }
-
-  onAdminUsersUpdate(callback: (users: any[]) => void) {
-    const update = async () => {
-      try {
-        const res = await this.authFetch('/api/admin/users');
-        if (res.ok) {
-          const data = await res.json();
-          callback(Array.isArray(data) ? data : []);
-        } else {
-          callback([]);
-        }
-      } catch (e) {
-        console.error('onAdminUsersUpdate error:', e);
-        callback([]);
-      }
-    };
-    const interval = setInterval(update, 4000);
-    update();
-    return () => clearInterval(interval);
-  }
-
   onPlayersUpdate(callback: (players: any[]) => void) {
     this.playersUpdateCallback = callback;
     return () => this.playersUpdateCallback = null;
@@ -603,107 +705,34 @@ class BackendService {
     fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
   }
 
-  async toggleBusinessBlock(adminId: string, targetId: string, businessId: string, shouldBlock: boolean) {
-    const target = await this.getProfile(targetId);
-    if (!target) return { success: false };
-    const businesses = (target.businesses || []).map((b: any) => b.businessId === businessId ? { ...b, isBlocked: shouldBlock } : b);
-    await this.patchProfile(targetId, { businesses });
-    return { success: true };
+  disconnect() {
+    this.stopSession();
+    if (this.eventsInterval) clearTimeout(this.eventsInterval);
+    if (this.globalInterval) clearInterval(this.globalInterval);
+    this.eventsInterval = null;
+    this.globalInterval = null;
   }
 
-  // --- Fraction & Role Management ---
-  async fireEmployee(adminId: string, targetId: string, reason: string) {
+  async collectBusinessProfit(businessId: string, amount: number, payTax: boolean) {
     try {
-      const res = await this.authFetch('/api/rada/fire', {
+      const res = await this.authFetch('/api/business/collect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUid: targetId, reason })
+        body: JSON.stringify({ businessId, amount, payTax })
       });
       return await res.json();
-    } catch (e) { return { success: false, error: e }; }
+    } catch (e: any) { return { success: false, error: e.message }; }
   }
-
-  async confiscateBusiness(adminId: string, targetId: string, businessId: string, reason: string) {
+  
+  async buyProtection(businessId: string) {
     try {
-      const res = await this.authFetch('/api/rada/confiscate', {
+      const res = await this.authFetch('/api/business/protect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUid: targetId, businessId, reason })
+        body: JSON.stringify({ businessId })
       });
       return await res.json();
-    } catch (e) { return { success: false, error: e }; }
-  }
-
-  async shadowAudit(adminId: string, targetId: string) {
-    try {
-      const res = await this.authFetch('/api/rada/audit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUid: targetId })
-      });
-      return await res.json();
-    } catch (e) { return { success: false, error: e }; }
-  }
-
-  // --- Bank Commands ---
-  async performBankAction(adminId: string, actionType: string, targetId?: string, amount?: number, data?: any) {
-    try {
-      const res = await this.authFetch('/api/bank/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionType, targetId, amount, reason: data?.reason })
-      });
-      return await res.json();
-    } catch (e) { return { success: false, error: e }; }
-  }
-
-  // --- Mafia Commands ---
-  async fireMafiaMember(bossId: string, targetId: string, reason: string) {
-    try {
-      const res = await this.authFetch('/api/mafia/fire', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUid: targetId, reason })
-      });
-      return await res.json();
-    } catch (e) { return { success: false, error: e }; }
-  }
-
-  async getMafiaTargets() {
-    try {
-      const res = await this.authFetch('/api/mafia/targets');
-      return res.ok ? await res.json() : [];
-    } catch (e) { return []; }
-  }
-
-  async performMafiaAction(adminId: string, actionType: string, targetId?: string, amount?: number, data?: any) {
-    const admin = await this.getProfile(adminId);
-    if (!admin) return { success: false };
-
-    let message = '';
-    switch(actionType) {
-      case 'laundry_req':
-        message = `Мафія подала запит на легалізацію ₴${amount?.toLocaleString()} брудних гривень.`;
-        break;
-      case 'bribe':
-        message = `Дано хабар посадовій особі у розмірі ₴${amount?.toLocaleString()}`;
-        if (targetId) await this.transferMoney(adminId, targetId, amount || 0);
-        break;
-      case 'hit':
-        message = `Мафія "замовила" гравця. Ціль буде заблокована на 1 цикл.`;
-        break;
-      case 'robbery':
-        message = `Мафія організувала зухвале пограбування банку!`;
-        break;
-      case 'protection':
-        message = `Мафія встановила "кришу" над бізнесом (Данина: ${amount}%).`;
-        break;
-      default:
-        message = `Мафія виконала дію: ${actionType}`;
-    }
-
-    await this.logEvent({ type: 'mafia_action', message, player: adminId });
-    return { success: true, message };
+    } catch (e: any) { return { success: false, error: e.message }; }
   }
 }
 

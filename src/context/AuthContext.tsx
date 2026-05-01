@@ -186,51 +186,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const collectProfits = async (businessId: string, gross: number, evade: boolean = false) => {
     if (!profile) return;
     
-    const taxRate = globalTaxRate;
-    const taxAmount = evade ? 0 : Math.floor(gross * taxRate);
-    const netProfit = gross - taxAmount;
-
-    const now = new Date().toISOString();
-    const newBusinesses = profile.businesses?.map(b => 
-      b.businessId === businessId ? { 
-        ...b, 
-        lastProfitAt: now,
-        lastActionAt: now 
-      } : b
-    );
-
-    const updatedProfile = { 
-      ...profile, 
-      balance: profile.balance + netProfit,
-      socialRating: evade ? Math.max(0, profile.socialRating - 20) : profile.socialRating + 5,
-      businesses: newBusinesses,
-      updatedAt: now
-    };
-
-    if (updatedProfile.bankCards && updatedProfile.bankCards.length > 0) {
-       const cardIdx = updatedProfile.bankCards.findIndex(c => c.type === 'standard');
-       const actualIdx = cardIdx !== -1 ? cardIdx : 0;
-       updatedProfile.bankCards[actualIdx].balance = (Number(updatedProfile.bankCards[actualIdx].balance) || 0) + netProfit;
-    }
-
-    if (!evade && taxAmount > 0) {
-      await backend.addToBudget(taxAmount);
+    try {
+      const res = await backend.authFetch('/api/business/collect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId, amount: gross, payTax: !evade })
+      });
       
-      await backend.logEvent({
-        type: 'tax',
-        player: `${profile.firstName} ${profile.lastName}`,
-        message: `сплачено податків на суму ₴${taxAmount.toLocaleString()} до держбюджету`
-      });
-    } else if (evade) {
-      await backend.logEvent({
-        type: 'evade',
-        player: `${profile.firstName} ${profile.lastName}`,
-        message: `ризикнув та забрав прибуток ₴${gross.toLocaleString()} собі`
-      });
+      const data = await res.json();
+      if (data.success) {
+        await refreshProfile();
+        return { netProfit: data.netProfit, taxAmount: data.taxPaid, evade };
+      } else {
+        alert(`Помилка при зборі прибутку: ${data.error || 'Невідома помилка'}`);
+      }
+    } catch (error) {
+      console.error('Collect error:', error);
+      alert('Помилка мережі при зборі прибутку');
     }
-
-    await backend.saveProfile(updatedProfile);
-    return { netProfit, taxAmount, evade };
   };
 
   const buyGlobalStock = async () => {

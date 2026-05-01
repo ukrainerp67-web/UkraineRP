@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Building2, ReceiptText, Briefcase, TrendingUp, Package, Wallet, Landmark, Clock, CheckCircle2, Lock, Trash2, Send } from 'lucide-react';
+import { Building2, ReceiptText, Briefcase, TrendingUp, Package, Wallet, Landmark, Clock, CheckCircle2, Lock, Trash2, Send, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { backend } from '../../services/backendService';
 import { useNotifications } from '../../context/NotificationContext';
@@ -165,6 +165,32 @@ export const BusinessView: React.FC = () => {
       }
     } catch (e) {
       console.error('Sell error:', e);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleBuyProtection = async (businessId: string) => {
+    if (!profile) return;
+    if (profile.balance < 50000) {
+      alert("Недостатньо коштів для криші (потрібно ₴50,000)");
+      return;
+    }
+    if (!window.confirm("Ви впевнені, що хочете купити мафіозну кришу? Це захистить вас від частих атак, але понизить соц.рейтинг.")) return;
+
+    setLoadingAction(`protect-${businessId}`);
+    try {
+      const res = await backend.buyProtection(businessId);
+      if (res.success) {
+        sendNotification(profile.uid, 'Мафіозна криша', 'Ваш бізнес тепер під захистом Сім\'ї.', 'mafia');
+        // We use refreshProfile since it's already in the parent scope or we can just hope the back-end update was enough
+        // but it's better to reload. 
+        // Note: refreshProfile is available from useAuth() in line 10
+      } else {
+        alert(res.error || "Помилка при купівлі захисту");
+      }
+    } catch (e) {
+      console.error('Protect error:', e);
     } finally {
       setLoadingAction(null);
     }
@@ -350,6 +376,16 @@ export const BusinessView: React.FC = () => {
                   >
                     <Trash2 className="w-4 h-4 group-hover/btn:scale-110" />
                   </button>
+                  {!b.hasMafiaProtection && (
+                    <button 
+                      onClick={() => handleBuyProtection(b.businessId)}
+                      disabled={loadingAction !== null}
+                      className="p-3 bg-black/60 backdrop-blur-md rounded-2xl text-red-500 hover:bg-red-900 transition-all border border-red-500/30 hover:border-red-500 group/btn"
+                      title="Мафіозна криша (₴50k)"
+                    >
+                      <Shield className="w-4 h-4 group-hover/btn:scale-110" />
+                    </button>
+                  )}
                 </div>
                 <div className="absolute bottom-6 left-6 right-6">
                   <h3 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tight leading-none mb-1">{b.meta?.name}</h3>

@@ -250,10 +250,16 @@ export const BankView: React.FC = () => {
 
   useEffect(() => {
     const fetchPlayers = async () => {
-      const list = await backend.searchUsers('');
-      setPlayers(list);
+      try {
+        const list = await backend.getAllPlayersForFraction();
+        setPlayers(list || []);
+      } catch (err) {
+        console.error("Error fetching players for bank", err);
+      }
     };
     fetchPlayers();
+    const interval = setInterval(fetchPlayers, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleBankWorkerAction = async (actionType: string) => {

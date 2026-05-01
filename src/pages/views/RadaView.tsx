@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
-import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle, ShieldAlert, TrendingUp, HandCoins, UserSearch, Ban, FileWarning, Wallet, Lock, Users } from 'lucide-react';
+import { Building2, Gavel, Award, Search, HelpCircle, Briefcase, Landmark, ReceiptText, AlertCircle, ShieldAlert, TrendingUp, HandCoins, UserSearch, Ban, FileWarning, Wallet, Lock, Users, RefreshCw } from 'lucide-react';
 import { backend } from '../../services/backendService';
 
 export const RadaView: React.FC = () => {
@@ -61,16 +61,48 @@ export const RadaView: React.FC = () => {
 
     const fetchPlayers = async () => {
        try {
-         const playersList = await backend.searchUsers('');
-         setPlayers(playersList);
+         const playersList = await backend.getAllPlayersForFraction();
+         setPlayers(playersList || []);
        } catch (err) {
          console.error("Error fetching players", err);
        }
     };
     fetchPlayers();
+    const interval = setInterval(fetchPlayers, 10000); // Update list periodically
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
+
+  const handleToggleMaidan = async () => {
+    if (!profile) return;
+    setLoadingAction('maidan');
+    try {
+      const res = await backend.toggleMaidan();
+      if (res.success) {
+         // state updated via onGlobalStateUpdate
+      }
+    } catch (e) {
+      alert('Помилка при перемиканні стану Майдану');
+    }
+    setLoadingAction(null);
+  };
+
+  const handleProposalAction = async (proposalId: string, action: 'approve' | 'reject') => {
+    if (!profile) return;
+    setLoadingAction(action);
+    try {
+      const res = await backend.manageProposal(proposalId, action);
+      if (res.success) {
+        alert(action === 'approve' ? 'Законопроєкт ПРИЙНЯТО' : 'Законопроєкт ВІДХИЛЕНО');
+      }
+    } catch (e) {
+      alert('Помилка при обробці запиту');
+    }
+    setLoadingAction(null);
+  };
 
   const govtEmployees = players.filter(p => p.role === 'rada' || [
     'Президент', "Прем'єр-міністр", 'Міністр фінансів', 'Депутат', 'Працівник ВФБ'
@@ -116,7 +148,8 @@ export const RadaView: React.FC = () => {
   const handleTaxChange = async () => {
     if (!profile) return;
     setLoadingAction('tax');
-    const res = await backend.setTaxRate(profile.uid, parseInt(taxInput) / 100);
+    const rateDecimal = parseInt(taxInput) / 100;
+    const res = await backend.setTaxRate(rateDecimal);
     if (res.success) {
       alert(`Нову ставку оподаткування (${taxInput}%) успішно затверджено!`);
     } else {
@@ -171,14 +204,25 @@ export const RadaView: React.FC = () => {
   const handleDeputyAction = async (action: string) => {
     if (!profile) return;
     setLoadingAction(action);
-    await backend.sendMessage({
-      senderName: profile.firstName + ' ' + profile.lastName,
-      senderPhoto: profile.passportPhoto,
-      content: `[Депутатська Дія: ${action}] ${action === 'bill' ? billDescription : partyName}`,
-      role: profile.status,
-      uid: profile.uid
-    });
-    alert('Запит надіслано до системи!');
+    
+    if (action === 'bill') {
+      const res = await backend.proposeBill(billDescription, 'Закон', 'legislative');
+      if (res.success) {
+        alert('Законопроєкт успішно подано на розгляд Президенту!');
+        setBillDescription('');
+      } else {
+        alert('Помилка при подачі законопроєкту');
+      }
+    } else {
+      await backend.sendMessage({
+        senderName: profile.firstName + ' ' + profile.lastName,
+        senderPhoto: profile.passportPhoto,
+        content: `[Депутатська Дія: ${action}] ${partyName}`,
+        role: profile.status,
+        uid: profile.uid
+      });
+      alert('Запит надіслано до системи!');
+    }
     setLoadingAction(null);
   };
 
@@ -213,9 +257,25 @@ export const RadaView: React.FC = () => {
   const handleToggleBlock = async (businessId: string, currentlyBlocked: boolean) => {
     if (!profile || !selectedPlayer) return;
     setLoadingAction(`block-${businessId}`);
-    await backend.toggleBusinessBlock(profile.uid, selectedPlayer, businessId, !currentlyBlocked);
-    const target = await backend.getProfile(selectedPlayer);
-    if (target && target.businesses) setTargetBusinesses(target.businesses);
+    try {
+      const res = await backend.toggleBusinessBlock(profile.uid, selectedPlayer, businessId, !currentlyBlocked);
+      if (res.success) {
+        // Update local audit state immediately
+        if (auditResult) {
+          setAuditResult({
+            ...auditResult,
+            auditData: auditResult.auditData.map((b: any) => 
+              b.businessId === businessId ? { ...b, isBlocked: !currentlyBlocked } : b
+            )
+          });
+        }
+        alert(currentlyBlocked ? 'Бізнес розблоковано' : 'Бізнес заблоковано');
+      } else {
+        alert(`Помилка: ${res.error || 'Не вдалося змінити стан'}`);
+      }
+    } catch (e) {
+      alert('Помилка при виконанні дії');
+    }
     setLoadingAction(null);
   };
 
@@ -349,6 +409,71 @@ export const RadaView: React.FC = () => {
                     Виступити {loadingAction === 'speech' && '...'}
                   </button>
                 </div>
+
+                <div className="p-4 bg-blue-900/10 border border-blue-500/20 rounded-2xl space-y-3">
+                   <div className="flex items-center gap-2 mb-1">
+                     <Gavel className="w-4 h-4 text-white" />
+                     <p className="text-[10px] font-black text-white uppercase">Активні Законопроєкти</p>
+                   </div>
+                   <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                      {countryState?.activeProposals?.filter((p: any) => p.status === 'pending').map((prop: any) => (
+                        <div key={prop.id} className="p-3 bg-black/40 rounded-xl border border-white/5 space-y-2">
+                           <div className="flex justify-between items-start">
+                             <p className="text-[10px] font-bold text-white uppercase">{prop.title}</p>
+                             <span className="text-[7px] bg-yellow-500/20 text-yellow-400 px-1 rounded">Очікує підпису</span>
+                           </div>
+                           <p className="text-[9px] text-text-dim italic leading-tight">{prop.description}</p>
+                           <p className="text-[8px] text-blue-400 font-bold uppercase">Ініціатор: {prop.proposer}</p>
+                           <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5">
+                             <button 
+                               onClick={() => handleProposalAction(prop.id, 'approve')}
+                               disabled={loadingAction !== null}
+                               className="py-1.5 bg-green-600 hover:bg-green-500 text-white text-[8px] font-black uppercase rounded"
+                             >
+                               Підписати
+                             </button>
+                             <button 
+                               onClick={() => handleProposalAction(prop.id, 'reject')}
+                               disabled={loadingAction !== null}
+                               className="py-1.5 bg-red-600 hover:bg-red-500 text-white text-[8px] font-black uppercase rounded"
+                             >
+                               Відхилити
+                             </button>
+                           </div>
+                        </div>
+                      ))}
+                      {(!countryState?.activeProposals || countryState.activeProposals.filter((p: any) => p.status === 'pending').length === 0) && (
+                        <p className="text-[9px] text-text-dim italic text-center py-4">Нових законопроєктів немає</p>
+                      )}
+                   </div>
+                </div>
+
+                <button 
+                  onClick={handleToggleMaidan}
+                  disabled={loadingAction === 'maidan'}
+                  className={`w-full flex items-center justify-between p-4 border rounded-2xl transition-all group ${
+                    countryState?.maidanActive 
+                      ? 'bg-green-500/10 border-green-500/20 hover:bg-green-500/20' 
+                      : 'bg-orange-500/10 border-orange-500/20 hover:bg-orange-500/20'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className={`w-5 h-5 ${countryState?.maidanActive ? 'text-green-400' : 'text-orange-400'}`} />
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-white uppercase">
+                        {countryState?.maidanActive ? 'ПРИПИНИТИ МІТИНГИ' : 'ОГОЛОСИТИ МАЙДАН'}
+                      </p>
+                      <p className="text-[9px] text-text-dim">
+                        {countryState?.maidanActive ? 'Стабілізувати ситуацію в країні' : 'Заклик народу до протесту'}
+                      </p>
+                    </div>
+                  </div>
+                  {loadingAction === 'maidan' ? (
+                    <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                  ) : (
+                    <Users className={`w-4 h-4 ${countryState?.maidanActive ? 'text-green-400' : 'text-orange-400'}`} />
+                  )}
+                </button>
 
                 <div className="p-4 bg-red-900/10 border border-red-500/20 rounded-2xl space-y-3">
                    <div className="flex items-center gap-2 mb-1">
@@ -578,7 +703,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {(profile?.role === 'Працівник ВФБ' || profile?.status === 'Працівник ВФБ') && (
+            {(profile?.role === 'admin' || profile?.status === 'Працівник ВФБ' || profile?.status === 'Міністр фінансів') && (
               <div className="space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -613,31 +738,52 @@ export const RadaView: React.FC = () => {
                        <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest">Звіт для: {auditResult.targetName}</p>
                        <div className="space-y-1.5">
                           {auditResult.auditData.map((b: any, idx: number) => (
-                            <div key={idx} className="flex items-center justify-between p-2 bg-white/5 rounded-lg text-[10px]">
-                               <div className="flex flex-col">
-                                 <span className="font-bold text-white">{b.name}</span>
-                                 <span className="text-[8px] text-text-dim font-mono">{b.businessId}</span>
+                            <div key={idx} className="p-3 bg-white/5 rounded-lg text-[10px] space-y-2">
+                               <div className="flex justify-between items-center">
+                                 <div className="flex flex-col">
+                                   <span className="font-bold text-white uppercase">{b.name}</span>
+                                   <span className="text-[8px] text-text-dim font-mono">{b.businessId}</span>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                   <span className={`font-black px-2 py-0.5 rounded ${b.evasions >= 5 ? 'bg-red-500 text-white' : 'bg-yellow-500/20 text-yellow-500'}`}>
+                                     Ухилень: {b.evasions}
+                                   </span>
+                                   <span className={`px-2 py-0.5 rounded font-black ${b.isBlocked ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                                     {b.isBlocked ? 'БЛОК' : 'ОК'}
+                                   </span>
+                                 </div>
                                </div>
-                               <div className="flex items-center gap-3">
-                                 <span className={`font-black ${b.evasions >= 5 ? 'text-red-500' : 'text-text-dim'}`}>
-                                   Ухилення: {b.evasions}
-                                 </span>
-                                 <span className={b.isBlocked ? 'text-red-400' : 'text-green-400'}>
-                                   {b.isBlocked ? 'Блок' : 'ОК'}
-                                 </span>
-                                 {(profile?.status === 'Працівник ВФБ' || profile?.role === 'admin') && (
-                                   <button
-                                     onClick={() => handleConfiscate(selectedPlayer, b.businessId)}
-                                     disabled={loadingAction === `confiscate-${b.businessId}`}
-                                     className="p-1 px-2 bg-red-600 hover:bg-red-500 text-white rounded text-[8px] font-black uppercase transition-all"
-                                   >
-                                     {loadingAction === `confiscate-${b.businessId}` ? '...' : <Ban className="w-2.5 h-2.5" />}
-                                   </button>
-                                 )}
+
+                               <div className="grid grid-cols-2 gap-2 text-[8px] opacity-60">
+                                  <div>
+                                    <p className="text-text-dim uppercase font-bold text-[7px]">Останній прибуток:</p>
+                                    <p className="text-white">{b.lastProfitAt ? new Date(b.lastProfitAt).toLocaleString('uk-UA') : 'Ніколи'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-text-dim uppercase font-bold text-[7px]">Оплата OPEX:</p>
+                                    <p className="text-white">{b.lastOpexAt ? new Date(b.lastOpexAt).toLocaleString('uk-UA') : 'Ніколи'}</p>
+                                  </div>
+                               </div>
+                               
+                               <div className="flex gap-2 pt-1 border-t border-white/5">
+                                 <button
+                                   onClick={() => handleToggleBlock(b.businessId, b.isBlocked)}
+                                   disabled={loadingAction?.startsWith('block')}
+                                   className="flex-1 py-1 bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-500 rounded text-[8px] font-black uppercase transition-all"
+                                 >
+                                   {b.isBlocked ? 'Розблокувати' : 'Блокувати'}
+                                 </button>
+                                 <button
+                                   onClick={() => handleConfiscate(selectedPlayer, b.businessId)}
+                                   disabled={loadingAction?.startsWith('confiscate')}
+                                   className="flex-1 py-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 rounded text-[8px] font-black uppercase transition-all"
+                                 >
+                                   Конфіскувати
+                                 </button>
                                </div>
                             </div>
                           ))}
-                          {auditResult.auditData.length === 0 && <p className="text-[9px] text-text-dim italic">Бізнесів не виявлено</p>}
+                          {auditResult.auditData.length === 0 && <p className="text-[9px] text-text-dim italic text-center py-2">Бізнесів не виявлено</p>}
                        </div>
                     </motion.div>
                   )}

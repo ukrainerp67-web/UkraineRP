@@ -432,10 +432,31 @@ class BackendService {
       const profile = await this.getProfile(userId);
       if (!profile) return { success: false };
       
-      const salaryRates: Record<string, number> = { 'Президент': 10000, "Міністр": 7000, 'Громадянин': 2000 };
-      const gross = salaryRates[profile.role] || 2000;
-      const global = await this.getGlobalState();
-      const taxAmount = Math.floor(gross * global.taxRate);
+      const role = profile.role || 'Громадянин';
+      const status = profile.status || 'Громадянин';
+
+      // Rules define specific salaries and taxes for fractions
+      let gross = 0;
+      let taxRate = 0;
+
+      // Rada Fraction
+      if (status === 'Президент') { gross = 10000; taxRate = 0.20; }
+      else if (status === "Прем'єр-міністр" || status === "Прем'єр Міністр") { gross = 8500; taxRate = 0.20; }
+      else if (status === 'Міністр фінансів') { gross = 7000; taxRate = 0.20; }
+      else if (status === 'Депутат') { gross = 5000; taxRate = 0.20; }
+      else if (status === 'Працівник ВФБ') { gross = 4000; taxRate = 0.20; }
+      
+      // Bank Fraction (Progressive PII)
+      else if (status === 'Голова Банку') { gross = 12000; taxRate = 0.25; }
+      else if (status === 'Директор кредитного відділу') { gross = 9000; taxRate = 0.20; }
+      else if (status === 'Керівник фінмоніторингу') { gross = 7500; taxRate = 0.18; }
+      else if (status === 'Головний касир') { gross = 5000; taxRate = 0.15; }
+      else if (status === 'Колектор банку') { gross = 3500; taxRate = 0.10; }
+      
+      // Others
+      else { gross = 2000; taxRate = 0.20; } // Default citizenship salary
+
+      const taxAmount = Math.floor(gross * taxRate);
       const net = gross - taxAmount;
 
       const bankCards = [...(profile.bankCards || [])];
@@ -443,10 +464,10 @@ class BackendService {
         bankCards[0].balance += net;
         await this.patchProfile(userId, { bankCards, lastPayDay: new Date().toISOString() });
         await this.addToBudget(taxAmount);
-        await this.sendNotification(userId, { title: '💰 PayDay', message: `Зарплата: ₴${net}. Податок: ₴${taxAmount}`, type: 'success' });
+        await this.sendNotification(userId, { title: '💰 PayDay', message: `Зарплата: ₴${net.toLocaleString()}. ПДФО: ₴${taxAmount.toLocaleString()}`, type: 'success' });
         return { success: true };
       }
-      return { success: false, message: 'Немає карти' };
+      return { success: false, message: 'Немає карти для зарахування' };
     } catch (e) { return { success: false }; }
   }
 

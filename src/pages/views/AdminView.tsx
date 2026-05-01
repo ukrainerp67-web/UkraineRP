@@ -112,7 +112,8 @@ export const AdminView: React.FC = () => {
             const updateData: any = {
                 balance: balance,
                 socialRating: socialRating,
-                isVerified: !!selectedUser.isVerified
+                isVerified: !!selectedUser.isVerified,
+                status: selectedUser.status || selectedUser.role // Ensure status is updated
             };
 
             // Only allow super admin to change roles
@@ -589,19 +590,54 @@ export const AdminView: React.FC = () => {
                 </button>
               </div>
               {adminProfile?.email === 'ukrainerp67@gmail.com' && (
-                <div>
-                  <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Роль</label>
-                  <select 
-                    value={selectedUser.role || 'user'}
-                    onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value})}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
-                  >
-                    <option value="user">Гравець</option>
-                    <option value="admin">Адміністратор</option>
-                    <option value="Президент">Президент</option>
-                    <option value="Прем'єр Міністр">Прем'єр Міністр</option>
-                    <option value="Міністр фінансів">Міністр фінансів</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Глобальна Роль</label>
+                    <select 
+                      value={selectedUser.role || 'user'}
+                      onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value})}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
+                    >
+                      <option value="user">Гравець</option>
+                      <option value="admin">Адміністратор</option>
+                      <option value="rada">Верховна Рада</option>
+                      <option value="bank">Банк</option>
+                      <option value="mafia">Мафія</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-text-dim block mb-1">Посада (Status)</label>
+                    <select 
+                      value={selectedUser.status || selectedUser.role || 'Громадянин'}
+                      onChange={(e) => setSelectedUser({...selectedUser, status: e.target.value})}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm"
+                    >
+                      <optgroup label="Загальні">
+                        <option value="Громадянин">Громадянин</option>
+                        <option value="Бізнесмен">Бізнесмен</option>
+                      </optgroup>
+                      <optgroup label="Верховна Рада">
+                        <option value="Президент">Президент</option>
+                        <option value="Прем'єр-міністр">Прем'єр-міністр</option>
+                        <option value="Міністр фінансів">Міністр фінансів</option>
+                        <option value="Депутат">Депутат</option>
+                        <option value="Працівник ВФБ">Працівник ВФБ</option>
+                      </optgroup>
+                      <optgroup label="Банк">
+                        <option value="Голова Банку">Голова Банку</option>
+                        <option value="Директор кредитного відділу">Директор кредитного відділу</option>
+                        <option value="Керівник фінмоніторингу">Керівник фінмоніторингу</option>
+                        <option value="Головний касир">Головний касир</option>
+                        <option value="Колектор банку">Колектор банку</option>
+                      </optgroup>
+                      <optgroup label="Мафія">
+                        <option value="Дон (Бос мафії)">Дон (Бос мафії)</option>
+                        <option value="Консильєрі (Радник)">Консильєрі (Радник)</option>
+                        <option value="Капо (Капітан)">Капо (Капітан)</option>
+                        <option value="Бойовик (Силовик)">Бойовик (Силовик)</option>
+                      </optgroup>
+                    </select>
+                  </div>
                 </div>
               )}
 

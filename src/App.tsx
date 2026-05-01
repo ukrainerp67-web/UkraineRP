@@ -32,35 +32,18 @@ function ErrorFallback({ error, resetErrorBoundary }: any) {
 const AppContent: React.FC = () => {
   const { user, profile, loading, isRecovering } = useAuth();
   const [showBypass, setShowBypass] = useState(false);
-  const [hasError, setHasError] = useState(false);
 
-  useEffect(() => {
-    const handleError = (e: ErrorEvent) => {
-      console.error('App Crash Detected:', e.message);
-      if (e.message?.includes('ResizeObserver')) return;
-      setHasError(true);
-    };
-    window.addEventListener('error', handleError);
-    return () => window.removeEventListener('error', handleError);
-  }, []);
-
+  // Fallback if stuck in loading for too long
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (loading || isRecovering) setShowBypass(true);
-    }, 15000); // 15 seconds for recovery
+      if (loading || isRecovering) {
+        console.warn('App: Loading timeout reached, showing bypass option');
+        setShowBypass(true);
+      }
+    }, 12000); // 12 seconds
 
     return () => clearTimeout(timer);
   }, [loading, isRecovering]);
-
-  if (hasError) {
-    return (
-      <div className="h-[100dvh] bg-[#0A0A0C] flex flex-col items-center justify-center p-6 text-center">
-        <h1 className="text-xl font-black text-white uppercase mb-2">Сталася помилка</h1>
-        <p className="text-xs text-text-muted mb-6">Спробуйте оновити сторінку</p>
-        <button onClick={() => window.location.reload()} className="px-6 py-3 bg-white text-black font-black rounded-xl uppercase text-[10px]">Оновити</button>
-      </div>
-    );
-  }
 
   if ((loading || isRecovering) && !showBypass) {
     return (

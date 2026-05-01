@@ -1256,8 +1256,15 @@ async function startServer() {
       
       if (!payTax) {
         businesses[bizIdx].taxEvasionCount = (businesses[bizIdx].taxEvasionCount || 0) + 1;
+        if (businesses[bizIdx].taxEvasionCount >= 5) {
+          businesses[bizIdx].isMarkedForRacket = true;
+        }
       } else {
-        businesses[bizIdx].taxEvasionCount = 0; 
+        const currentEvasions = businesses[bizIdx].taxEvasionCount || 0;
+        businesses[bizIdx].taxEvasionCount = Math.max(0, currentEvasions - 1);
+        if (businesses[bizIdx].taxEvasionCount === 0) {
+          businesses[bizIdx].isMarkedForRacket = false;
+        }
       }
 
       // Update Global Budget (Online sync)
@@ -1466,17 +1473,28 @@ async function startServer() {
       const users = await prisma.player.findMany({
         where: { businesses: { not: [] as any } }
       });
+      
+      const uids = users.map(u => u.uid);
+      const onlinePresences = await prisma.presence.findMany({
+        where: { 
+          uid: { in: uids },
+          lastActive: { gte: new Date(Date.now() - 60000) } // Active in last 1 min
+        }
+      });
+      const onlineUids = new Set(onlinePresences.map(p => p.uid));
+
       const targets: any[] = [];
       users.forEach(u => {
         const bz = (u.businesses as any[]) || [];
         bz.forEach(b => {
-          if ((b.taxEvasionCount || 0) >= 5) {
+          if (b.isMarkedForRacket || (b.taxEvasionCount || 0) >= 5) {
             targets.push({
               id: b.businessId || b.name,
               name: b.name || b.businessId,
               ownerName: `${u.firstName} ${u.lastName}`,
               ownerUid: u.uid,
-              evasions: b.taxEvasionCount || 0
+              evasions: b.taxEvasionCount || 0,
+              isOnline: onlineUids.has(u.uid)
             });
           }
         });

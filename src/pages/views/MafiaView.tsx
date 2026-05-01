@@ -23,18 +23,45 @@ export const MafiaView: React.FC = () => {
   ].includes(profile?.status || '');
 
   useEffect(() => {
+    let interval: any;
+    
     if (isMafia) {
       const fetchData = async () => {
-        const [playersList, targetList] = await Promise.all([
-          backend.searchUsers(''),
-          backend.getMafiaTargets()
-        ]);
-        setPlayers(playersList);
-        setTargets(targetList);
+        try {
+          const [playersList, targetList] = await Promise.all([
+            backend.searchUsers(''),
+            backend.getMafiaTargets()
+          ]);
+          setPlayers(playersList);
+          setTargets(targetList);
+        } catch (e) {
+          console.error("Error fetching mafia data:", e);
+        }
       };
+      
       fetchData();
+      // Polling every 5 seconds for "immediate" updates as requested
+      interval = setInterval(fetchData, 5000);
     }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [isMafia]);
+
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      const [playersList, targetList] = await Promise.all([
+        backend.searchUsers(''),
+        backend.getMafiaTargets()
+      ]);
+      setPlayers(playersList);
+      setTargets(targetList);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const mafiaMembers = players.filter(p => p.role === 'mafia' || [
     'Дон (Бос мафії)', 'Консильєрі (Радник)', 'Капо (Капітан)', 'Бойовик (Силовик)'
@@ -223,9 +250,19 @@ export const MafiaView: React.FC = () => {
           </section>
 
           <section className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="w-5 h-5 text-red-600" />
-              <h3 className="text-sm font-black text-white uppercase tracking-wider">Об'єкти для рекету</h3>
+            <div className="flex items-center justify-between mb-2">
+               <div className="flex items-center gap-2">
+                 <Target className="w-5 h-5 text-red-600" />
+                 <h3 className="text-sm font-black text-white uppercase tracking-wider">Об'єкти для рекету</h3>
+               </div>
+               <button 
+                 onClick={handleRefresh}
+                 disabled={loading}
+                 className={`p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all ${loading ? 'animate-spin' : ''}`}
+                 title="Оновити список"
+               >
+                 <Zap className="w-3 h-3 text-red-500" />
+               </button>
             </div>
             
             <p className="text-[10px] text-text-dim uppercase tracking-widest font-bold">Бізнеси з ухиленням від податків:</p>
@@ -241,7 +278,10 @@ export const MafiaView: React.FC = () => {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <p className="text-xs font-black text-white">{target.name}</p>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <div className={`w-1.5 h-1.5 rounded-full ${target.isOnline ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'bg-gray-600'}`} />
+                        <p className="text-xs font-black text-white">{target.name}</p>
+                      </div>
                       <p className="text-[9px] text-text-dim uppercase tracking-tighter">Власник: {target.ownerName}</p>
                     </div>
                     <div className="text-right">

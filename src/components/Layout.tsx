@@ -38,13 +38,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onViewChan
   const isAdmin = profile?.role === 'admin' || profile?.email?.toLowerCase() === 'ukrainerp67@gmail.com';
   
   const isGovLeader = isAdmin || 
-                      profile?.role === 'Президент' || 
-                      profile?.role === "Прем'єр Міністр" || 
-                      profile?.role === 'Міністр фінансів';
+                      profile?.role === 'rada' ||
+                      ['Президент', "Прем'єр Міністр", "Прем'єр-міністр", 'Міністр фінансів'].includes(profile?.role || '') ||
+                      ['Президент', "Прем'єр Міністр", "Прем'єр-міністр", 'Міністр фінансів'].includes(profile?.status || '');
 
   const isInGov = isGovLeader || 
-                  profile?.role === 'Депутат' || 
-                  profile?.role === 'Працівник ВФБ';
+                  ['Депутат', 'Працівник ВФБ'].includes(profile?.role || '') ||
+                  ['Депутат', 'Працівник ВФБ'].includes(profile?.status || '');
 
   useEffect(() => {
     if (isGovLeader) {

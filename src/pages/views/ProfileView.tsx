@@ -225,7 +225,7 @@ export const ProfileView: React.FC = () => {
               {[
                 { label: 'Баланс', value: `₴${profile.balance.toLocaleString()}`, icon: Wallet, color: 'text-ukraine-yellow' },
                 { label: 'Рейтинг', value: profile.socialRating, icon: Star, color: 'text-blue-400' },
-                { label: 'Статус', value: 'Громадянин', icon: UserCheck, color: 'text-green-400' },
+                { label: 'Статус', value: profile.status || 'Громадянин', icon: UserCheck, color: 'text-green-400' },
                 { label: 'Регіон', value: 'Україна', icon: MapPin, color: 'text-ukraine-blue' },
               ].map((stat, idx) => (
                 <motion.div
@@ -679,7 +679,9 @@ export const ProfileView: React.FC = () => {
                           </h3>
                           <Shield className="w-4 h-4 text-ukraine-blue" />
                         </div>
-                        <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-1">Громадянин | ID: {friendData?.uid?.slice(0, 8) || '---'}</p>
+                        <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-1">
+                          {friendData?.status || 'Громадянин'} | ID: {friendData?.uid?.slice(0, 8) || '---'}
+                        </p>
 
                         <div className="grid grid-cols-2 gap-3 mt-6">
                           <div className="bg-white/5 p-3 rounded-xl border border-white/5">

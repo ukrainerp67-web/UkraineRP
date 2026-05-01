@@ -13,17 +13,28 @@ export const RadaView: React.FC = () => {
   const isSuperAdmin = profile?.email === 'ukrainerp67@gmail.com';
   const canJoin = isSuperAdmin || (profile && profile.socialRating >= 15);
 
-  const isGovLeader = profile?.role === 'Президент' || 
-                      profile?.role === "Прем'єр Міністр" || 
-                      profile?.role === "Прем'єр міністр" || 
-                      profile?.role === "Прем'єр-міністр" || 
-                      profile?.role === 'Міністр фінансів' ||
-                      profile?.role === 'admin' ||
-                      profile?.role === 'rada';
+  const isGovLeader = profile?.role === 'admin' || 
+                      profile?.role === 'rada' ||
+                      [
+                        'Президент', 
+                        "Прем'єр Міністр", 
+                        "Прем'єр міністр", 
+                        "Прем'єр-міністр", 
+                        'Міністр фінансів'
+                      ].includes(profile?.role || '') ||
+                      [
+                        'Президент', 
+                        "Прем'єр Міністр", 
+                        "Прем'єр міністр", 
+                        "Прем'єр-міністр", 
+                        'Міністр фінансів'
+                      ].includes(profile?.status || '');
 
   const isInGov = isGovLeader || 
                   profile?.role === 'Депутат' || 
-                  profile?.role === 'Працівник ВФБ';
+                  profile?.role === 'Працівник ВФБ' ||
+                  profile?.status === 'Депутат' ||
+                  profile?.status === 'Працівник ВФБ';
 
   const [players, setPlayers] = useState<any[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string>('');
@@ -256,7 +267,7 @@ export const RadaView: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {profile?.role === 'Президент' && (
+            {(profile?.role === 'Президент' || profile?.status === 'Президент') && (
               <div className="space-y-4">
                 <button 
                   onClick={handlePresidentVeto}
@@ -295,7 +306,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {profile?.role === "Прем'єр-міністр" && (
+            {(profile?.role === "Прем'єр-міністр" || profile?.role === "Прем'єр Міністр" || profile?.status === "Прем'єр-міністр" || profile?.status === "Прем'єр Міністр") && (
               <div className="space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -331,7 +342,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {profile?.role === 'Міністр фінансів' && (
+            {(profile?.role === 'Міністр фінансів' || profile?.status === 'Міністр фінансів') && (
               <div className="space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -458,7 +469,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {profile?.role === 'Працівник ВФБ' && (
+            {(profile?.role === 'Працівник ВФБ' || profile?.status === 'Працівник ВФБ') && (
               <div className="space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -487,7 +498,7 @@ export const RadaView: React.FC = () => {
               </div>
             )}
 
-            {profile?.role === 'Працівник оподаткування' && (
+            {(profile?.role === 'Працівник оподаткування' || profile?.status === 'Працівник оподаткування') && (
               <div className="space-y-4">
                 <button 
                   onClick={handleRaid}

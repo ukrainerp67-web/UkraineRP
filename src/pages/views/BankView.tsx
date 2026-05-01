@@ -243,6 +243,14 @@ export const BankView: React.FC = () => {
     );
   };
 
+  const isBankEmployee = profile?.role === 'bank' || profile?.role === 'admin' || [
+    'Голова Банку',
+    'Директор кредитного відділу',
+    'Керівник фінмоніторингу',
+    'Головний касир',
+    'Колектор банку'
+  ].includes(profile?.status || '');
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-8">
       {!profile ? (
@@ -266,6 +274,67 @@ export const BankView: React.FC = () => {
         </div>
         <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/5 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl pointer-events-none" />
       </header>
+
+      {isBankEmployee && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <section className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-500/10 rounded-lg">
+                <Landmark className="w-5 h-5 text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Панель Співробітника Банку</h3>
+                <p className="text-[10px] text-text-dim uppercase tracking-widest">{profile?.status || profile?.role}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {(profile?.status === 'Голова Банку' || profile?.role === 'admin') && (
+                <>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <ArrowUpRight className="w-5 h-5 text-blue-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Випуск держоблігацій</p>
+                      <p className="text-[9px] text-text-dim">Залучення коштів до бюджету</p>
+                    </div>
+                  </button>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 text-purple-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Тіньовий договір легалізації</p>
+                      <p className="text-[9px] text-text-dim">Спрощена процедура відмивання</p>
+                    </div>
+                  </button>
+                </>
+              )}
+              {(profile?.status === 'Директор кредитного відділу' || profile?.role === 'admin') && (
+                <>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <ArrowDownLeft className="w-5 h-5 text-green-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Цільовий кредит</p>
+                      <p className="text-[9px] text-text-dim">Видача коштів під заставу</p>
+                    </div>
+                  </button>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <Gavel className="w-5 h-5 text-red-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Аукціон конфіскату</p>
+                      <p className="text-[9px] text-text-dim">Продаж заставного майна</p>
+                    </div>
+                  </button>
+                </>
+              )}
+            </div>
+            <p className="text-[10px] text-text-dim italic text-center">Використовуйте ігрові команди в чаті для виконання обов'язків</p>
+          </section>
+          
+          <section className="bg-card-dark border border-white/5 p-6 rounded-3xl flex flex-col items-center justify-center text-center space-y-4">
+            <RefreshCw className="w-12 h-12 text-white/5 animate-spin-slow" />
+            <p className="text-xs text-text-dim uppercase font-black tracking-widest">Очікування фінансових запитів від системи...</p>
+          </section>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className="space-y-4">

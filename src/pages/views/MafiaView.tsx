@@ -7,6 +7,13 @@ export const MafiaView: React.FC = () => {
   const isSuperAdmin = profile?.email === 'ukrainerp67@gmail.com';
   const canJoin = isSuperAdmin || (profile && profile.socialRating <= -15);
 
+  const isMafia = profile?.role === 'mafia' || profile?.role === 'admin' || [
+    'Дон (Бос мафії)',
+    'Консильєрі (Радник)',
+    'Капо (Капітан)',
+    'Бойовик (Силовик)'
+  ].includes(profile?.status || '');
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-8 text-gray-200">
       <header className="bg-gradient-to-br from-gray-900 to-black p-6 md:p-8 rounded-2xl md:rounded-3xl border border-red-900/50 relative overflow-hidden">
@@ -20,7 +27,68 @@ export const MafiaView: React.FC = () => {
         <Skull className="absolute -bottom-8 -right-8 w-32 md:w-48 h-32 md:h-48 text-red-900/5 rotate-12 pointer-events-none" />
       </header>
 
-      {!canJoin ? (
+      {isMafia && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <section className="bg-card-dark border border-white/5 p-6 rounded-3xl space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-900/20 rounded-lg">
+                <Skull className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Панель Управління Сім'єю</h3>
+                <p className="text-[10px] text-text-dim uppercase tracking-widest">{profile?.status || profile?.role}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {(profile?.status === 'Дон (Бос мафії)' || profile?.role === 'admin') && (
+                <>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <Zap className="w-5 h-5 text-yellow-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Запит на відмивання</p>
+                      <p className="text-[9px] text-text-dim">Легалізація брудних гривень через Банк</p>
+                    </div>
+                  </button>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <Target className="w-5 h-5 text-red-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Замовити гравця</p>
+                      <p className="text-[9px] text-text-dim">Блокування дій цілі на 1 цикл</p>
+                    </div>
+                  </button>
+                </>
+              )}
+              {(profile?.status === 'Капо (Капітан)' || profile?.role === 'admin') && (
+                <>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <ShieldAlert className="w-5 h-5 text-orange-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Кришування бізнесу</p>
+                      <p className="text-[9px] text-text-dim">Встановлення данини для ухилянтів</p>
+                    </div>
+                  </button>
+                  <button className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all flex items-center gap-3">
+                    <Users className="w-5 h-5 text-red-600" />
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase">Війна за бізнес</p>
+                      <p className="text-[9px] text-text-dim">Атака на кришу іншої мафії</p>
+                    </div>
+                  </button>
+                </>
+              )}
+            </div>
+            <p className="text-[10px] text-text-dim italic text-center">Використовуйте ігрові команди в чаті для виконання обов'язків</p>
+          </section>
+
+          <section className="bg-card-dark border border-white/5 p-6 rounded-3xl flex flex-col items-center justify-center text-center space-y-4">
+            <Target className="w-12 h-12 text-white/5 animate-pulse" />
+            <p className="text-xs text-text-dim uppercase font-black tracking-widest">Перегляд активних цілей та бізнесів...</p>
+          </section>
+        </div>
+      )}
+
+      {(!canJoin && !isMafia) ? (
         <div className="game-card p-6 md:p-10 text-center border-red-500/20 bg-red-500/5">
           <ShieldAlert className="w-10 h-10 md:w-12 md:h-12 text-red-500 mx-auto mb-4" />
           <h3 className="text-lg md:text-xl font-bold mb-2 text-white">ДОСТУП ЗАБОРОНЕНО</h3>

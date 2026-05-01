@@ -43,6 +43,40 @@ if (rawUrl) {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ukraine-rp-secret-key-2024';
 
+const FRACTION_STATUSES = [
+  'Головний Адмін',
+  'Президент',
+  "Прем'єр Міністр",
+  "Прем'єр міністр",
+  "Прем'єр-міністр",
+  'Міністр фінансів',
+  'Депутат',
+  'Працівник ВФБ',
+  'Голова Банку',
+  'Директор кредитного відділу',
+  'Керівник фінмоніторингу',
+  'Головний касир',
+  'Колектор банку',
+  'Поліція',
+  'Дон (Бос мафії)',
+  'Консильєрі (Радник)',
+  'Капо (Капітан)',
+  'Бойовик (Силовик)',
+  'Працівник оподаткування'
+];
+
+function resolveStatus(businesses: any[], currentStatus: string) {
+  const hasBusinesses = Array.isArray(businesses) && businesses.length > 0;
+  
+  // Якщо у користувача є спеціальна фракційна роль, залишаємо її
+  if (FRACTION_STATUSES.includes(currentStatus)) {
+    return currentStatus;
+  }
+  
+  // Інакше перемикаємо між Громадянином та Бізнесменом
+  return hasBusinesses ? 'Бізнесмен' : 'Громадянин';
+}
+
 // Middleware for auth verification
 const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
@@ -414,7 +448,7 @@ async function startServer() {
     try {
       const isAdmin = email?.toLowerCase() === 'ukrainerp67@gmail.com';
       const userRole = isAdmin ? 'admin' : (role || 'user');
-      const userStatus = isAdmin ? 'Головний Адмін' : (status || 'Громадянин');
+      const userStatus = isAdmin ? 'Головний Адмін' : resolveStatus(businesses || [], status || 'Громадянин');
       const userBalance = isAdmin && (!balance || balance < 1000000) ? 10000000 : (balance !== undefined ? balance : 5000);
 
       // Ensure we don't have unique constraint conflicts on username
@@ -483,10 +517,15 @@ async function startServer() {
     const isAdmin = req.dbUser && req.dbUser.role === 'admin';
     if (req.user.uid !== uid && !isAdmin) return res.status(403).json({ error: 'Identity mismatch' });
     try {
+      const existingUser = await prisma.player.findUnique({ where: { uid } });
+      const currentStatus = existingUser?.status || 'Громадянин';
+      const updatedStatus = updates.businesses !== undefined ? resolveStatus(updates.businesses, currentStatus) : (updates.status || currentStatus);
+
       const user = await prisma.player.update({
         where: { uid },
         data: {
           ...updates,
+          status: updatedStatus,
           updatedAt: new Date()
         }
       });
@@ -814,8 +853,9 @@ async function startServer() {
       
       const businesses = (target.businesses as any[]) || [];
       const auditData = businesses.map(b => ({
+        businessId: b.businessId,
         name: b.name || b.businessId,
-        evasions: b.evasionCount || 0,
+        evasions: b.taxEvasionCount || b.evasions || 0,
         isBlocked: b.isBlocked || false
       }));
 
@@ -832,9 +872,13 @@ async function startServer() {
       return res.status(403).json({ error: 'Тільки Президент може звільняти працівників' });
     }
     try {
+      const target = await prisma.player.findUnique({ where: { uid: targetUid } });
+      const businesses = (target?.businesses as any[]) || [];
+      const newStatus = resolveStatus(businesses, 'Громадянин');
+
       await prisma.player.update({
         where: { uid: targetUid },
-        data: { status: 'Громадянин', role: 'user' }
+        data: { status: newStatus, role: 'user' }
       });
       await prisma.notification.create({
         data: {
@@ -934,9 +978,13 @@ async function startServer() {
       return res.status(403).json({ error: 'Тільки Дон може виганяти з сім\'ї' });
     }
     try {
+      const target = await prisma.player.findUnique({ where: { uid: targetUid } });
+      const businesses = (target?.businesses as any[]) || [];
+      const newStatus = resolveStatus(businesses, 'Громадянин');
+
       await prisma.player.update({
         where: { uid: targetUid },
-        data: { status: 'Громадянин', role: 'user' }
+        data: { status: newStatus, role: 'user' }
       });
       await prisma.notification.create({
         data: {
@@ -947,6 +995,57 @@ async function startServer() {
         }
       });
       res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // RADA: Confiscate Business
+  app.post('/api/rada/confiscate', authenticateToken, async (req: any, res) => {
+    const { targetUid, businessId, reason } = req.body;
+    const isVFB = req.dbUser?.status === 'Працівник ВФБ' || req.dbUser?.role === 'admin';
+    if (!isVFB) return res.status(403).json({ error: 'Доступ лише для працівників ВФБ' });
+
+    try {
+      const target = await prisma.player.findUnique({ where: { uid: targetUid } });
+      if (!target) return res.status(404).json({ error: 'Ціль не знайдена' });
+
+      let businesses = (target.businesses as any[]) || [];
+      const businessExists = businesses.some(b => b.businessId === businessId);
+      if (!businessExists) return res.status(404).json({ error: 'Бізнес не знайдено' });
+
+      // Remove the business
+      const updatedBusinesses = businesses.filter(b => b.businessId !== businessId);
+      
+      // Resolve new status if it was the last business
+      const newStatus = resolveStatus(updatedBusinesses, target.status || 'Громадянин');
+
+      await prisma.player.update({
+        where: { uid: targetUid },
+        data: { 
+          businesses: updatedBusinesses,
+          status: newStatus
+        }
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: targetUid,
+          title: 'БІЗНЕС КОНФІСКОВАНО!',
+          message: `Держава конфіскувала ваш бізнес "${businessId}". Причина: ${reason || 'Порушення податкового законодавства'}`,
+          type: 'alert'
+        }
+      });
+
+      await prisma.globalEvent.create({
+        data: {
+          type: 'rada',
+          message: `[ВФБ] Конфісковано бізнес у ${target.firstName} ${target.lastName}. Причина: ${reason || 'Податкова перевірка'}`,
+          player: req.dbUser.firstName
+        }
+      });
+
+      res.json({ success: true, newStatus });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

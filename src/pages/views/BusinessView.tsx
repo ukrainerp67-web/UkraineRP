@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Building2, ReceiptText, Briefcase, TrendingUp, Package, Wallet, Landmark, Clock, CheckCircle2, Lock } from 'lucide-react';
+import { Building2, ReceiptText, Briefcase, TrendingUp, Package, Wallet, Landmark, Clock, CheckCircle2, Lock, Trash2, Send } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { backend } from '../../services/backendService';
 import { useNotifications } from '../../context/NotificationContext';
@@ -140,6 +140,76 @@ export const BusinessView: React.FC = () => {
     }
   };
 
+  const handleSellBusiness = async (businessId: string) => {
+    if (!profile) return;
+    const b = profile.businesses?.find(biz => biz.businessId === businessId);
+    const meta = BUSINESS_TYPES.find(m => m.id === businessId);
+    if (!b || !meta) return;
+
+    const sellPrice = Math.floor(meta.price * 0.7);
+    if (!window.confirm(`Ви впевнені, що хочете продати ${meta.name} за ₴${sellPrice.toLocaleString()}?`)) return;
+
+    setLoadingAction(`sell-${businessId}`);
+    try {
+      const updatedBusinesses = profile.businesses.filter(biz => biz.businessId !== businessId);
+      const newBalance = profile.balance + sellPrice;
+      
+      const res = await backend.saveProfile({
+        ...profile,
+        balance: newBalance,
+        businesses: updatedBusinesses
+      });
+
+      if (res.success) {
+        sendNotification(profile.uid, 'Бізнес продано', `Ви продали ${meta.name} за ₴${sellPrice.toLocaleString()}.`, 'money');
+      }
+    } catch (e) {
+      console.error('Sell error:', e);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleTransferBusiness = async (businessId: string) => {
+    if (!profile) return;
+    const targetEmail = prompt('Вкажіть Email гравця, якому хочете ПЕРЕДАТИ бізнес:');
+    if (!targetEmail) return;
+
+    const targetProfile = await backend.getProfileByEmail(targetEmail);
+    if (!targetProfile) {
+      alert('Гравця з таким Email не знайдено');
+      return;
+    }
+
+    if (targetProfile.uid === profile.uid) {
+      alert('Не можна передати бізнес самому собі');
+      return;
+    }
+
+    if (!window.confirm(`Ви впевнені, що хочете ПЕРЕДАТИ бізнес ${businessId} гравцеві ${targetProfile.firstName} ${targetProfile.lastName}?`)) return;
+
+    setLoadingAction(`transfer-${businessId}`);
+    try {
+      const businessToTransfer = profile.businesses.find(b => b.businessId === businessId);
+      if (!businessToTransfer) return;
+
+      // 1. Remove from source
+      const updatedSourceBusinesses = profile.businesses.filter(b => b.businessId !== businessId);
+      await backend.saveProfile({ ...profile, businesses: updatedSourceBusinesses });
+
+      // 2. Add to target
+      const updatedTargetBusinesses = [...(targetProfile.businesses || []), businessToTransfer];
+      await backend.saveProfile({ ...targetProfile, uid: targetProfile.uid, businesses: updatedTargetBusinesses });
+
+      sendNotification(profile.uid, 'Бізнес передано', `Ви передали бізнес ${businessId} успішно.`, 'info');
+      sendNotification(targetProfile.uid, 'Отримано бізнес', `${profile.firstName} передав вам бізнес ${businessId}!`, 'success');
+    } catch (e) {
+      console.error('Transfer error:', e);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   const renderOpexTimer = (lastOpexAt?: string) => {
     if (!lastOpexAt) return <span className="text-red-400">ПОТРІБНА ОПЛАТА</span>;
     const elapsed = Date.now() - new Date(lastOpexAt).getTime();
@@ -262,6 +332,24 @@ export const BusinessView: React.FC = () => {
                       <TrendingUp className="w-3 h-3" /> ₴{calculateCurrentProfit(b).toLocaleString()}
                     </div>
                   )}
+                </div>
+                <div className="absolute top-6 right-6 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-[-10px] group-hover:translate-y-0">
+                  <button 
+                    onClick={() => handleTransferBusiness(b.businessId)}
+                    disabled={loadingAction !== null}
+                    className="p-3 bg-black/60 backdrop-blur-md rounded-2xl text-white hover:bg-ukraine-blue transition-all border border-white/10 hover:border-ukraine-blue/50 group/btn"
+                    title="Передати бізнес"
+                  >
+                    <Send className="w-4 h-4 group-hover/btn:scale-110" />
+                  </button>
+                  <button 
+                    onClick={() => handleSellBusiness(b.businessId)}
+                    disabled={loadingAction !== null}
+                    className="p-3 bg-black/60 backdrop-blur-md rounded-2xl text-white hover:bg-red-600 transition-all border border-white/10 hover:border-red-500/50 group/btn"
+                    title="Продати бізнес"
+                  >
+                    <Trash2 className="w-4 h-4 group-hover/btn:scale-110" />
+                  </button>
                 </div>
                 <div className="absolute bottom-6 left-6 right-6">
                   <h3 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tight leading-none mb-1">{b.meta?.name}</h3>

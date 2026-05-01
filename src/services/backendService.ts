@@ -613,95 +613,60 @@ class BackendService {
 
   // --- Fraction & Role Management ---
   async fireEmployee(adminId: string, targetId: string, reason: string) {
-    const admin = await this.getProfile(adminId);
-    const target = await this.getProfile(targetId);
-    if (!admin || !target) return { success: false, message: 'Користувач не знайдений' };
+    try {
+      const res = await this.authFetch('/api/rada/fire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId, reason })
+      });
+      return await res.json();
+    } catch (e) { return { success: false, error: e }; }
+  }
 
-    await this.patchProfile(targetId, { 
-      role: 'user', 
-      status: 'Громадянин' 
-    });
-
-    await this.logEvent({ 
-      type: 'dismissal', 
-      message: `${admin.status} звільнив ${target.firstName} ${target.lastName}. Причина: ${reason}`, 
-      player: adminId 
-    });
-
-    await this.sendNotification(targetId, {
-      title: '🚫 Звільнення',
-      message: `Вас було звільнено з посади. Причина: ${reason}`,
-      type: 'error'
-    });
-
-    return { success: true };
+  async confiscateBusiness(adminId: string, targetId: string, businessId: string, reason: string) {
+    try {
+      const res = await this.authFetch('/api/rada/confiscate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId, businessId, reason })
+      });
+      return await res.json();
+    } catch (e) { return { success: false, error: e }; }
   }
 
   async shadowAudit(adminId: string, targetId: string) {
-    const target = await this.getProfile(targetId);
-    if (!target) return { success: false, message: 'Ціль не знайдена' };
-    
-    const businesses = target.businesses || [];
-    const auditData = businesses.map((b: any) => ({
-      name: b.name,
-      evasions: b.taxEvasionCount || 0,
-      isBlocked: b.isBlocked || false
-    }));
-
-    await this.logEvent({ 
-      type: 'shadow_audit', 
-      message: `ВФБ проведено тіньовий аудит бізнесів ${target.firstName} ${target.lastName}.`, 
-      player: adminId 
-    });
-
-    return { success: true, auditData, targetName: `${target.firstName} ${target.lastName}` };
+    try {
+      const res = await this.authFetch('/api/rada/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId })
+      });
+      return await res.json();
+    } catch (e) { return { success: false, error: e }; }
   }
 
   // --- Bank Commands ---
   async performBankAction(adminId: string, actionType: string, targetId?: string, amount?: number, data?: any) {
-    const admin = await this.getProfile(adminId);
-    if (!admin) return { success: false };
-
-    let message = '';
-    switch(actionType) {
-      case 'bonds': 
-        message = `Голова Банку випустив державні облігації на суму ₴${amount?.toLocaleString()}`;
-        await this.addToBudget(amount || 0);
-        break;
-      case 'laundry_deal':
-        message = `Голова Банку уклав тіньовий договір легалізації з клієнтом.`;
-        break;
-      case 'credit':
-        message = `Видано цільовий кредит для гравця на суму ₴${amount?.toLocaleString()}`;
-        if (targetId) await this.applyBonusOrPenalty(adminId, targetId, amount || 0, 'Цільовий кредит');
-        break;
-      case 'auction':
-        message = `Директор кредитного відділу оголосив аукціон конфіскованого майна.`;
-        break;
-      case 'finmon_block':
-        message = `Фінмоніторинг заблокував підозрілу транзакцію.`;
-        break;
-      case 'deposit':
-        message = `Головний касир відкрив новий депозитний рахунок.`;
-        break;
-      default:
-        message = `Співробітник банку виконав дію: ${actionType}`;
-    }
-
-    await this.logEvent({ type: 'bank_action', message, player: adminId });
-    return { success: true, message };
+    try {
+      const res = await this.authFetch('/api/bank/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionType, targetId, amount, reason: data?.reason })
+      });
+      return await res.json();
+    } catch (e) { return { success: false, error: e }; }
   }
 
   // --- Mafia Commands ---
   async fireMafiaMember(bossId: string, targetId: string, reason: string) {
-    const boss = await this.getProfile(bossId);
-    const target = await this.getProfile(targetId);
-    if (!boss || !target) return { success: false };
-
-    await this.patchProfile(targetId, { role: 'user', status: 'Громадянин' });
-    await this.logEvent({ type: 'mafia_dismissal', message: `Доно звільнив ${target.firstName} ${target.lastName} з лав сім'ї. Причина: ${reason}`, player: bossId });
-    await this.sendNotification(targetId, { title: '💀 Вигнання', message: `Вас вигнали з мафії. Причина: ${reason}`, type: 'error' });
-    return { success: true };
+    try {
+      const res = await this.authFetch('/api/mafia/fire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: targetId, reason })
+      });
+      return await res.json();
+    } catch (e) { return { success: false, error: e }; }
   }
 
   async getMafiaTargets() {

@@ -141,6 +141,32 @@ export const RadaView: React.FC = () => {
     }
     setLoadingAction(null);
   };
+  
+  const handleConfiscate = async (targetUid: string, businessId: string) => {
+    if (!profile) return;
+    const reason = window.prompt(`Вкажіть причину конфіскації для бізнесу ${businessId}:`);
+    if (!reason) return;
+    
+    setLoadingAction(`confiscate-${businessId}`);
+    try {
+      const res = await backend.confiscateBusiness(profile.uid, targetUid, businessId, reason);
+      if (res.success) {
+        alert('Бізнес успішно конфісковано!');
+        // Update local audit state
+        if (auditResult) {
+          setAuditResult({
+            ...auditResult,
+            auditData: auditResult.auditData.filter((b: any) => b.businessId !== businessId)
+          });
+        }
+      } else {
+        alert(`Помилка: ${res.error || 'Не вдалося конфіскувати'}`);
+      }
+    } catch (e) {
+      alert('Помилка при виконанні дії');
+    }
+    setLoadingAction(null);
+  };
 
   const handleDeputyAction = async (action: string) => {
     if (!profile) return;
@@ -588,7 +614,10 @@ export const RadaView: React.FC = () => {
                        <div className="space-y-1.5">
                           {auditResult.auditData.map((b: any, idx: number) => (
                             <div key={idx} className="flex items-center justify-between p-2 bg-white/5 rounded-lg text-[10px]">
-                               <span className="font-bold text-white">{b.name}</span>
+                               <div className="flex flex-col">
+                                 <span className="font-bold text-white">{b.name}</span>
+                                 <span className="text-[8px] text-text-dim font-mono">{b.businessId}</span>
+                               </div>
                                <div className="flex items-center gap-3">
                                  <span className={`font-black ${b.evasions >= 5 ? 'text-red-500' : 'text-text-dim'}`}>
                                    Ухилення: {b.evasions}
@@ -596,6 +625,15 @@ export const RadaView: React.FC = () => {
                                  <span className={b.isBlocked ? 'text-red-400' : 'text-green-400'}>
                                    {b.isBlocked ? 'Блок' : 'ОК'}
                                  </span>
+                                 {(profile?.status === 'Працівник ВФБ' || profile?.role === 'admin') && (
+                                   <button
+                                     onClick={() => handleConfiscate(selectedPlayer, b.businessId)}
+                                     disabled={loadingAction === `confiscate-${b.businessId}`}
+                                     className="p-1 px-2 bg-red-600 hover:bg-red-500 text-white rounded text-[8px] font-black uppercase transition-all"
+                                   >
+                                     {loadingAction === `confiscate-${b.businessId}` ? '...' : <Ban className="w-2.5 h-2.5" />}
+                                   </button>
+                                 )}
                                </div>
                             </div>
                           ))}

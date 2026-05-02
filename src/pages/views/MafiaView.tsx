@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Skull, Target, Users, Zap, ShieldAlert, X, Eye, Crosshair } from 'lucide-react';
 import { backend } from '../../services/backendService';
